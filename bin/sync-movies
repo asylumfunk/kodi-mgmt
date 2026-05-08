@@ -8,6 +8,11 @@ import os
 import sys
 
 
+DEFAULT_HOST_ADDRESS = os.environ.get('KODI_HOST_ADDRESS', 'http://127.0.0.1')
+DEFAULT_HOST_PORT = os.environ.get('KODI_HOST_PORT', '80')
+DEFAULT_HOST_PATH = os.environ.get('KODI_HOST_PATH', 'jsonrpc')
+
+
 def main():  # type: () -> None
     """
     Execute the script, presumably from the command line
@@ -25,6 +30,62 @@ def parse_args():  # type: () -> argparse.Namespace
     parser = argparse.ArgumentParser(
         prog=script_name,
         description=description,
+    )
+    parser.add_argument(
+        '-a',
+        '--host-address',
+        default=DEFAULT_HOST_ADDRESS,
+    )
+    parser.add_argument(
+        '-p',
+        '--host-port',
+        default=DEFAULT_HOST_PORT,
+    )
+    parser.add_argument(
+        '-P',
+        '--host-path',
+        default=DEFAULT_HOST_PATH,
+    )
+    parser.add_argument(
+        '-n',
+        '--noop',
+        default=True,
+        action='store_true',
+    )
+    parser.add_argument(
+        '-N',
+        '--no-noop',
+        action='store_false',
+        dest='noop',
+    )
+    parser.add_argument(
+        '-l',
+        '--local-update',
+        default=True,
+        action='store_true',
+    )
+    parser.add_argument(
+        '-L',
+        '--no-local-update',
+        action='store_false',
+        dest='local_update',
+    )
+    parser.add_argument(
+        '-r',
+        '--remote-update',
+        default=True,
+        action='store_true',
+    )
+    parser.add_argument(
+        '-R',
+        '--no-remote-update',
+        action='store_false',
+        dest='remote_update',
+    )
+    parser.add_argument(
+        'paths',
+        nargs='*',
+        default=('.',),
     )
     args = parser.parse_args()
     return args
