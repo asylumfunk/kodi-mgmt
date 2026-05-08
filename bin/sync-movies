@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+# pylint: disable=invalid-name
+"""
+Synchronise movie metadata between .nfo files and the Kodi API
+"""
+import argparse
+import os
+import sys
+
+
+def main():  # type: () -> None
+    """
+    Execute the script, presumably from the command line
+    """
+    args = parse_args()
+    print(args)
+
+
+def parse_args():  # type: () -> argparse.Namespace
+    """
+    Parse and process command-line arguments
+    """
+    script_name = os.path.split(sys.argv[0])[-1]
+    description = __doc__
+    parser = argparse.ArgumentParser(
+        prog=script_name,
+        description=description,
+    )
+    args = parser.parse_args()
+    return args
+
+
+if __name__ == '__main__':
+    main()
