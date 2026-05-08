@@ -4,8 +4,24 @@
 Synchronise movie metadata between .nfo files and the Kodi API
 """
 import argparse
+import json
 import os
 import sys
+
+# Straddle Python2/3
+# to support py2 in older Kodi versions (<19)
+# since v18 was the last to support MPEG2/VC1 hardware-acceleration on
+# Raspberry Pi v3 boards.
+try:
+    from urllib.request import urlopen  # type: ignore
+    from urllib.request import Request  # type: ignore
+except ImportError:
+    from urllib2 import urlopen  # type: ignore
+    from urllib2 import Request  # type: ignore
+try:
+    from typing import Dict, Any
+except ImportError:
+    pass
 
 
 DEFAULT_HOST_ADDRESS = os.environ.get('KODI_HOST_ADDRESS', 'http://127.0.0.1')
@@ -13,12 +29,59 @@ DEFAULT_HOST_PORT = os.environ.get('KODI_HOST_PORT', '80')
 DEFAULT_HOST_PATH = os.environ.get('KODI_HOST_PATH', 'jsonrpc')
 
 
+class KodiApi:
+    """
+    Connect to and manage a Kodi instance via its API
+    """
+
+    def __init__(self, host, port, path):  # type: (str, str, str) -> None
+        self.host = host
+        self.port = port
+        self.path = path
+        self._headers = {
+            'Cache-Control': 'no-cache',
+            'Content-Type': 'application/json',
+        }
+
+    def call(self, data):  # type: (dict) -> Dict[str, Any]
+        """
+        Make a request to an endpoint with some data payload
+        """
+        if 'jsonrpc' not in data:
+            data['jsonrpc'] = '2.0'
+        if 'id' not in data:
+            data['id'] = 'whatever'
+        payload = json.dumps(data).encode()
+        request_object = Request(
+            self.url,
+            data=payload,
+            headers=self._headers,
+        )
+        with urlopen(request_object) as response:
+            data = json.load(response)
+        result = data.get('result', {})
+        return result
+
+    @property
+    def url(self):  # type: () -> str
+        """
+        Build the API endpoint URL
+        """
+        url = "{host}:{port}/{path}".format(
+            host=self.host,
+            port=self.port,
+            path=self.path,
+        )
+        return url
+
+
 def main():  # type: () -> None
     """
     Execute the script, presumably from the command line
     """
     args = parse_args()
-    print(args)
+    api = KodiApi(args.host_address, args.host_port, args.host_path)
+    print(api)
 
 
 def parse_args():  # type: () -> argparse.Namespace
