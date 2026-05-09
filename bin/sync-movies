@@ -5,6 +5,7 @@ Synchronise movie metadata between .nfo files and the Kodi API
 """
 from abc import ABCMeta
 import argparse
+import base64
 from datetime import datetime
 from datetime import timedelta
 import json
@@ -194,14 +195,21 @@ class KodiApi:
     Connect to and manage a Kodi instance via its API
     """
 
-    def __init__(self, host, port, path):  # type: (str, str, str) -> None
+    def __init__(self, host, port, path, username=None, password=None):
+        # type: (str, str, str, Optional[str], Optional[str]) -> None
+        # pylint: disable=too-many-arguments
         self.host = host
         self.port = port
         self.path = path
         self._headers = {
             'Cache-Control': 'no-cache',
             'Content-Type': 'application/json',
-        }
+        }  # type: Dict[str, Any]
+        if username:
+            password = password or ''
+            credentials = bytes((':'.join([username, password])).encode('utf-8'))
+            authorization = 'Basic ' + base64.b64encode(credentials).decode('utf-8')
+            self._headers['Authorization'] = authorization
 
     def call(self, data):  # type: (dict) -> Dict[str, Any]
         """
@@ -611,6 +619,8 @@ def main():  # type: () -> None
         args.host_address,
         args.host_port,
         args.host_path,
+        username=args.username,
+        password=args.password,
     )
     for path in args.paths:
         library = MovieNfoLibrary(path)
@@ -649,6 +659,14 @@ def parse_args():  # type: () -> argparse.Namespace
         '-P',
         '--host-path',
         default=DEFAULT_HOST_PATH,
+    )
+    parser.add_argument(
+        '-u',
+        '--username',
+    )
+    parser.add_argument(
+        '-w',
+        '--password',
     )
     parser.add_argument(
         '-n',
