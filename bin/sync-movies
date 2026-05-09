@@ -263,15 +263,10 @@ class NfoLibrary:
         )
         return possible_nfos
 
-    @property
-    def nfos(self):  # type: () -> Iterable[str]
+    def get_nfos(self, top=None):  # type: (str) -> Iterable[str]
         """
         Find all nfo metadata files within the library root
         """
-        for nfo in self._walk():
-            yield nfo
-
-    def _walk(self, top=None):  # type: (str) -> Iterable[str]
         top = top or os.path.abspath(self.root)
         directory_name = os.path.basename(top)
         for possible_nfo in self.possible_nfos(top, directory_name):
@@ -281,7 +276,7 @@ class NfoLibrary:
         for _, dirs, _ in os.walk(top):
             for _dir in dirs:
                 _dir = os.path.join(top, _dir)
-                for nfo in self._walk(_dir):
+                for nfo in self.get_nfos(_dir):
                     yield nfo
 
 
@@ -618,7 +613,7 @@ def main():  # type: () -> None
     )
     for path in args.paths:
         library = MovieNfoLibrary(path)
-        for nfo in library.nfos:
+        for nfo in library.get_nfos():
             film = Film.from_nfo(nfo)
             if film:
                 film.sync(
