@@ -165,24 +165,23 @@ def update_playcount_history(movie_node):  # type: (ET.Element) -> None
         count_lastplayed_nodes += 1
 
 
-def indent(elem, level=0):  # type: (ET.Element, int) -> None
+def indent(element, level=0, indent_size=4):  # type: (ET.Element, int, int) -> None
     """
     Indent the XML tree consistently
     """
-    indent_size = 4
-    i = "\n" + level * (indent_size * " ")
-    if len(elem):
-        if not elem.text or not elem.text.strip():
-            elem.text = i + (indent_size * " ")
-        if not elem.tail or not elem.tail.strip():
-            elem.tail = i
-        for _elem in elem:
+    i = '\n' + level * (indent_size * ' ')
+    if len(element):
+        if not element.text or not element.text.strip():
+            element.text = i + (indent_size * ' ')
+        if not element.tail or not element.tail.strip():
+            element.tail = i
+        for _elem in element:
             indent(_elem, level + 1)
-        if not elem.tail or not elem.tail.strip():
-            elem.tail = i
+        if not element.tail or not element.tail.strip():
+            element.tail = i
     else:
-        if level and (not elem.tail or not elem.tail.strip()):
-            elem.tail = i
+        if level and (not element.tail or not element.tail.strip()):
+            element.tail = i
 
 
 class KodiApi:
