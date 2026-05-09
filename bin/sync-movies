@@ -1,0 +1,717 @@
+#!/usr/bin/env python3
+# pylint: disable=invalid-name
+"""
+Synchronise movie metadata between .nfo files and the Kodi API
+"""
+from abc import ABCMeta
+import argparse
+import base64
+from datetime import datetime
+from datetime import timedelta
+import json
+import os
+import sys
+import xml.etree.ElementTree as ET
+
+# Straddle Python2/3
+# to support py2 in older Kodi versions (<19)
+# since v18 was the last to support MPEG2/VC1 hardware-acceleration on
+# Raspberry Pi v3 boards.
+try:
+    from urllib.request import urlopen  # type: ignore
+    from urllib.request import Request  # type: ignore
+except ImportError:
+    from urllib2 import urlopen  # type: ignore
+    from urllib2 import Request  # type: ignore
+try:
+    from typing import Any, Dict, Iterable, Optional
+except ImportError:
+    pass
+
+
+DEFAULT_HOST_ADDRESS = os.environ.get('KODI_HOST_ADDRESS', 'http://127.0.0.1')
+DEFAULT_HOST_PORT = os.environ.get('KODI_HOST_PORT', '80')
+DEFAULT_HOST_PATH = os.environ.get('KODI_HOST_PATH', 'jsonrpc')
+
+
+def parse_types(data):  # type: (dict) -> dict
+    """
+    Parse string -> type within a dict
+    """
+    data = dict(data)
+    for key, _type in (
+        ('dateadded', parse_datetime),
+        ('lastplayed', parse_datetime),
+        ('playcount', parse_int),
+    ):
+        if key in data:
+            try:
+                data[key] = _type(data[key])  # type: ignore
+            except TypeError:
+                data[key] = None
+    return data
+
+
+def parse_int(string, default=0):  # type: (str, int) -> int
+    """
+    Convert a string into an integer
+    """
+    try:
+        value = int(string)
+    except TypeError:
+        value = default
+    return value
+
+
+def parse_datetime(timestamp_string):  # type: (Optional[str]) -> Optional[datetime]
+    """
+    Parse a string into a datetime
+    """
+    if not timestamp_string:
+        return None
+    datetime_formats = (
+        '%Y-%m-%d %H:%M:%S',
+        '%Y-%m-%d %H:%M',
+        '%Y-%m-%d',
+    )
+    for datetime_format in datetime_formats:
+        try:
+            timestamp = datetime.strptime(timestamp_string, datetime_format)
+            return timestamp
+        except ValueError:
+            continue
+    return None
+
+
+DATA_TYPES = {
+    'datetime': {
+        'handler': parse_datetime,
+        'keys': [
+            'lastplayed',
+            'dateadded',
+        ],
+    },
+    'int': {
+        'handler': parse_int,
+        'keys': [
+            'playcount',
+            'year',
+            'runtime',
+        ],
+    },
+    'list': {
+        'handler': None,
+        'keys': [
+            'genre',
+            'tag',
+            'director',
+        ],
+    },
+    'str': {
+        'handler': parse_int,
+        'keys': [
+            'title',
+            'mpaa',
+            'set',
+            'tagline',
+            'plot',
+            'plotoutline',
+            'trailer',
+        ],
+    },
+}  # type: Dict[str, Dict[str, Any]]
+
+
+def init_history_node(movie_node):  # type: (ET.Element) -> ET.Element
+    """
+    Add and/or get a history node
+    """
+    history_nodes = movie_node.findall('./history')
+    if len(history_nodes) <= 0:
+        history_node = ET.SubElement(movie_node, 'history')
+    else:
+        history_node = history_nodes[0]
+    return history_node
+
+
+def add_to_history(movie_node, lastplayed_text=None):  # type: (ET.Element, Optional[str]) -> None
+    """
+    Update the history node
+    """
+    if lastplayed_text is None:
+        lastplayed_nodes = movie_node.findall('./lastplayed')
+        if len(lastplayed_nodes) > 0:
+            lastplayed_node = lastplayed_nodes[0]
+            lastplayed_text = lastplayed_node.text
+    history_node = init_history_node(movie_node)
+    lastplayed_nodes = movie_node.findall('./lastplayed')
+    if lastplayed_text == '' or (lastplayed_text and lastplayed_text not in (
+            _.text for _ in lastplayed_nodes
+    )):
+        _ = ET.SubElement(history_node, 'lastplayed')
+        _.text = lastplayed_text
+
+
+def update_playcount_history(movie_node):  # type: (ET.Element) -> None
+    """
+    Backfill lastplayed entries in history, to match playcount
+    """
+    playcount_nodes = movie_node.findall('./playcount')
+    if len(playcount_nodes) > 0:
+        playcount_node = playcount_nodes[0]
+    else:
+        playcount_node = ET.SubElement(movie_node, 'playcount')
+    playcount = int(playcount_node.text or 0)
+    lastplayed_nodes = movie_node.findall('./history/lastplayed')
+    count_lastplayed_nodes = len(lastplayed_nodes)
+    history_node = init_history_node(movie_node)
+    while playcount > count_lastplayed_nodes:
+        _ = ET.SubElement(history_node, 'lastplayed')
+        count_lastplayed_nodes += 1
+
+
+def indent(elem, level=0):  # type: (ET.Element, int) -> None
+    """
+    Indent the XML tree consistently
+    """
+    indent_size = 4
+    i = "\n" + level * (indent_size * " ")
+    if len(elem):
+        if not elem.text or not elem.text.strip():
+            elem.text = i + (indent_size * " ")
+        if not elem.tail or not elem.tail.strip():
+            elem.tail = i
+        for _elem in elem:
+            indent(_elem, level + 1)
+        if not elem.tail or not elem.tail.strip():
+            elem.tail = i
+    else:
+        if level and (not elem.tail or not elem.tail.strip()):
+            elem.tail = i
+
+
+class KodiApi:
+    """
+    Connect to and manage a Kodi instance via its API
+    """
+
+    def __init__(self, host, port, path, username=None, password=None):
+        # type: (str, str, str, Optional[str], Optional[str]) -> None
+        # pylint: disable=too-many-arguments
+        self.host = host
+        self.port = port
+        self.path = path
+        self._headers = {
+            'Cache-Control': 'no-cache',
+            'Content-Type': 'application/json',
+        }  # type: Dict[str, Any]
+        if username:
+            password = password or ''
+            credentials = bytes((':'.join([username, password])).encode('utf-8'))
+            authorization = 'Basic ' + base64.b64encode(credentials).decode('utf-8')
+            self._headers['Authorization'] = authorization
+
+    def call(self, data):  # type: (dict) -> Dict[str, Any]
+        """
+        Make a request to an endpoint with some data payload
+        """
+        if 'jsonrpc' not in data:
+            data['jsonrpc'] = '2.0'
+        if 'id' not in data:
+            data['id'] = 'whatever'
+        payload = json.dumps(data).encode()
+        request_object = Request(
+            self.url,
+            data=payload,
+            headers=self._headers,
+        )
+        with urlopen(request_object) as response:
+            data = json.load(response)
+        result = data.get('result', {})
+        return result
+
+    @property
+    def url(self):  # type: () -> str
+        """
+        Build the API endpoint URL
+        """
+        url = "{host}:{port}/{path}".format(
+            host=self.host,
+            port=self.port,
+            path=self.path,
+        )
+        return url
+
+
+class NfoLibrary:
+    """
+    Define an nfo library for generic media
+    """
+    __metaclass__ = ABCMeta
+    NFO_NAME_BASE = None  # type: str
+
+    def __init__(self, root):  # type: (str) -> None
+        root = os.path.abspath(root)
+        self.root = root
+
+    @classmethod
+    def possible_nfos(cls, top, directory_name):  # type: (str, str) -> Iterable[str]
+        """
+        List all candidate nfo file pathnames within a directory
+        """
+        if cls is NfoLibrary:
+            raise NotImplementedError
+        possible_nfos = (
+            # specific
+            os.path.join(top, os.path.extsep.join([directory_name, 'nfo'])),
+            # generic
+            os.path.join(top, os.path.extsep.join([cls.NFO_NAME_BASE, 'nfo'])),
+        )
+        return possible_nfos
+
+    @property
+    def nfos(self):  # type: () -> Iterable[str]
+        """
+        Find all nfo metadata files within the library root
+        """
+        for nfo in self._walk():
+            yield nfo
+
+    def _walk(self, top=None):  # type: (str) -> Iterable[str]
+        top = top or os.path.abspath(self.root)
+        directory_name = os.path.basename(top)
+        for possible_nfo in self.possible_nfos(top, directory_name):
+            if os.path.exists(possible_nfo):
+                yield possible_nfo
+                return
+        for _, dirs, _ in os.walk(top):
+            for _dir in dirs:
+                _dir = os.path.join(top, _dir)
+                for nfo in self._walk(_dir):
+                    yield nfo
+
+
+class MovieNfoLibrary(NfoLibrary):
+    """
+    Define an nfo library for movie media
+    """
+    # pylint: disable=too-few-public-methods
+    NFO_NAME_BASE = 'movie'
+
+
+class Film:
+    """
+    Represent a movie within Kodi
+    """
+
+    def __init__(self, data, nfo=None):  # type: (dict, str) -> None
+        self.data = data
+        self.nfo = nfo or ''
+
+    def __str__(self):  # type: () -> str
+        string = str(self.data)
+        return string
+
+    @classmethod
+    def _from_nfo_datetime(cls, data, movie_node):  # type: (dict, ET.Element) -> None
+        for date_type in DATA_TYPES['datetime']['keys']:
+            nodes = movie_node.findall('./' + date_type)
+            item_date = None  # type: Optional[datetime]
+            if len(nodes) > 0:
+                node = nodes[0]
+                item = node.text  # type: Optional[str]
+                item_date = parse_datetime(item)
+            data[date_type] = item_date
+
+    @classmethod
+    def _from_nfo_str(cls, data, movie_node):  # type: (dict, ET.Element) -> None
+        for string_type in DATA_TYPES['str']['keys']:
+            item = ''
+            nodes = movie_node.findall('./' + string_type)
+            if len(nodes) > 0:
+                node = nodes[0]
+                item = node.text or ''
+            data[string_type] = item
+
+    @classmethod
+    def _from_nfo_int(cls, data, movie_node):  # type: (dict, ET.Element) -> None
+        for int_type in DATA_TYPES['int']['keys']:
+            nodes = movie_node.findall('./' + int_type)
+            item = 0
+            if len(nodes) > 0:
+                node = nodes[0]
+                try:
+                    item = int(node.text or 0)
+                except ValueError:
+                    item = 0
+            data[int_type] = item
+
+    @classmethod
+    def _from_nfo_list(cls, data, movie_node):  # type: (dict, ET.Element) -> None
+        for list_type in DATA_TYPES['list']['keys']:
+            nodes = movie_node.findall('./' + list_type)
+            items = [
+                node.text
+                for node in nodes
+                if node.text
+            ]
+            data[list_type] = items
+
+    @classmethod
+    def from_nfo(cls, nfo):  # type: (str) -> Optional[Film]
+        """
+        Parse an nfo file into a Film
+        """
+        tree = ET.parse(nfo)
+        movie_node = cls._get_movie_node(tree)
+        if movie_node is None:
+            return None
+        data = {}  # type: Dict[str, Any]
+        cls._from_nfo_datetime(data, movie_node)
+        cls._from_nfo_str(data, movie_node)
+        cls._from_nfo_int(data, movie_node)
+        cls._from_nfo_list(data, movie_node)
+        film = cls(data, nfo=nfo)
+        return film
+
+    @classmethod
+    def _get_movie_node(cls, tree):  # type: (ET.ElementTree) -> Optional[ET.Element]
+        movie_nodes = tree.findall('.')
+        movie_node = None
+        if len(movie_nodes) == 1:
+            movie_node = movie_nodes[0]
+            if movie_node.tag != 'movie':
+                movie_node = None
+        return movie_node
+
+    @classmethod
+    def from_api(cls, api, film=None):  # type: (KodiApi, Optional[Film]) -> Optional[Film]
+        """
+        Parse an API response into a Film
+        """
+        if film:
+            payload = {
+                "method": "VideoLibrary.GetMovies",
+                "params": {
+                    'filter': {
+                        'and': [
+                            {
+                                'field': 'title',
+                                'operator': 'is',
+                                'value': film.data['title'],
+                            },
+                            {
+                                'field': 'year',
+                                'operator': 'is',
+                                'value': str(film.data['year']),
+                            },
+                        ],
+                    },
+                    'properties': [
+                        # 'movieid',
+                    ],
+                },
+            }  # type: Dict[str, Any]
+            payload['params']['properties'].extend(DATA_TYPES['list']['keys'])
+            payload['params']['properties'].extend(DATA_TYPES['datetime']['keys'])
+            payload['params']['properties'].extend(DATA_TYPES['str']['keys'])
+            payload['params']['properties'].extend(DATA_TYPES['int']['keys'])
+            original_title = film.data.get('originaltitle')
+            if original_title:
+                payload['params']['filter']['and'].append({
+                    'field': 'originaltitle',
+                    'operator': 'is',
+                    'value': original_title,
+                })
+            result = api.call(payload)
+            movies = result.get('movies', [])
+            movie = None
+            if len(movies) < 1:
+                print("NONE FOUND", film.data['title'])
+                print('*' * 20)
+            elif len(movies) > 1:
+                print("TOO MANY FOUND", film.data['title'])
+                for _movie in movies:
+                    print(_movie)
+                print('*' * 20)
+            else:
+                data = movies[0]
+                data = parse_types(data)
+                movie = cls(data)
+            return movie
+        return None
+
+    def _sync_dateadded(self, local, remote, nfo_changes, api_changes):
+        # type: (Film, Film, dict, dict) -> None
+        if local.data['dateadded'] and remote.data['dateadded']:
+            # both sides have _some_ dateadded
+            if (local.data['dateadded'] + timedelta(days=1)) < remote.data['dateadded']:
+                # local is older, so update remote
+                api_changes['dateadded'] = local.data['dateadded']
+            elif (local.data['dateadded'] - timedelta(days=1)) > remote.data['dateadded']:
+                # local is newer, so update local
+                nfo_changes['dateadded'] = remote.data['dateadded']
+        elif local.data['dateadded']:
+            # only local side has dateadded, so set it remotely
+            api_changes['dateadded'] = local.data['dateadded']
+        elif remote.data['dateadded']:
+            # only remote side has dateadded, so set it locally
+            nfo_changes['dateadded'] = remote.data['dateadded']
+
+    def _sync_lastplayed(self, local, remote, nfo_changes, api_changes):
+        # type: (Film, Film, dict, dict) -> None
+        if local.data['lastplayed'] and remote.data['lastplayed']:
+            # both sides have _some_ lastplayed
+            if (local.data['lastplayed'] - timedelta(days=1)) > remote.data['lastplayed']:
+                # local is played more recently, so update remote
+                if local.data['playcount'] > remote.data['playcount']:
+                    # local is played more, so update api
+                    api_changes['lastplayed'] = local.data['lastplayed']
+            elif (local.data['lastplayed'] + timedelta(days=1)) < remote.data['lastplayed']:
+                # remote is played more recently, so update local
+                if local.data['playcount'] < remote.data['playcount']:
+                    # local is played less, so update local
+                    nfo_changes['lastplayed'] = remote.data['lastplayed']
+        elif local.data['lastplayed']:
+            # only local side has lastplayed, so set remote
+            api_changes['lastplayed'] = local.data['lastplayed']
+        elif remote.data['lastplayed']:
+            # only remote side has lastplayed, so set local
+            nfo_changes['lastplayed'] = remote.data['lastplayed']
+
+    def _sync_playcount(self, local, remote, nfo_changes, api_changes):
+        # type: (Film, Film, dict, dict) -> None
+        if local.data['playcount'] > remote.data['playcount']:
+            api_changes['playcount'] = local.data['playcount']
+        elif local.data['playcount'] < remote.data['playcount']:
+            nfo_changes['playcount'] = remote.data['playcount']
+
+    def sync(self, api, local_update=False, remote_update=False, dry_run=True):
+        # type: (KodiApi, bool, bool, bool) -> bool
+        """
+        Sync data between nfo files and the Kodi API
+        """
+        local = self
+        remote = Film.from_api(api, film=self)
+        if not remote:
+            return False
+        api_changes = {}  # type: Dict[str, Any]
+        nfo_changes = {}  # type: Dict[str, Any]
+        self._sync_dateadded(local, remote, nfo_changes, api_changes)
+        self._sync_lastplayed(local, remote, nfo_changes, api_changes)
+        self._sync_playcount(local, remote, nfo_changes, api_changes)
+        for list_type in DATA_TYPES['list']['keys']:
+            if sorted(local.data[list_type]) != sorted(remote.data[list_type]):
+                api_changes[list_type] = local.data[list_type]
+        for string_type in DATA_TYPES['str']['keys']:
+            if string_type == 'plotoutline':
+                if local.data['plotoutline'] == local.data['plot']:
+                    pass
+                if local.data['plot'].startswith(local.data['plotoutline']):
+                    pass
+            else:
+                if local.data[string_type] != remote.data[string_type]:
+                    api_changes[string_type] = local.data[string_type]
+        if 'lastplayed' in nfo_changes and 'playcount' not in nfo_changes:
+            del nfo_changes['lastplayed']
+        api_changes = {
+            key: value
+            for key, value in api_changes.items()
+            if remote_update and key in (
+                'dateadded',
+                'genre',
+                'lastplayed',
+                'playcount',
+                'tag',
+                'title',
+                'trailer',
+            )
+        }
+        nfo_changes = {
+            key: value
+            for key, value in nfo_changes.items()
+            if local_update and key in (
+                'dateadded',
+                'lastplayed',
+                'playcount',
+            )
+        }
+        if api_changes or nfo_changes:
+            print('FILM:     ', local.data['title'])
+        self.to_api(api, remote, api_changes, dry_run)
+        self.to_nfo(self.nfo, local, nfo_changes, dry_run)
+        if api_changes or nfo_changes:
+            print('*' * 20)
+        return bool(api_changes or nfo_changes)
+
+    def to_api(self, api, remote, changes, dry_run):
+        # type: (KodiApi, Film, dict, bool) -> None
+        """
+        Send updates to the Kodi API
+        """
+        if not changes:
+            return
+        print('API TO:   ', changes)
+        print('API FROM: ', {
+            key: value
+            for key, value in remote.data.items()
+            if key in changes
+        })
+        movie_id = remote.data['movieid']
+        payload = {
+            "method": "VideoLibrary.SetMovieDetails",
+            "params": {
+                'movieid': movie_id,
+            },
+        }  # type: Dict[str, Any]
+        for key, value in changes.items():
+            payload['params'][key] = value
+        print("PAYLOAD", payload)
+        if not dry_run:
+            result = api.call(payload)
+
+    def to_nfo(self, nfo, local, changes, dry_run):
+        # type: (str, Film, dict, bool) -> None
+        """
+        Send updates to the nfo file
+        """
+        if not changes:
+            return
+        print('NFO TO:   ', changes)
+        print('NFO FROM: ', {
+            key: value
+            for key, value in local.data.items()
+            if key in changes
+        })
+        tree = ET.parse(nfo)
+        movie_node = Film._get_movie_node(tree)
+        if movie_node is None:
+            return
+        root = tree.getroot()
+        add_to_history(movie_node)
+        for key in changes.keys():
+            node = tree.findall('.//movie/' + key)
+            if len(node) > 0:
+                tag = node[0]
+            else:
+                print("Adding Missing Tag: ", key)
+                tag = ET.SubElement(movie_node, key)
+            tag.text = str(changes[key])
+            # tag.attrib['foo'] = 'bar'
+        lastplayed_nodes = tree.findall('.//movie/lastplayed')
+        if len(lastplayed_nodes) > 0:
+            lastplayed_node = lastplayed_nodes[0]
+            add_to_history(movie_node, lastplayed_node.text)
+        update_playcount_history(movie_node)
+        indent(root)
+        if not dry_run:
+            with open(nfo, 'wb') as nfo_out:
+                nfo_out.write(b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
+                tree.write(nfo_out, xml_declaration=False, encoding='utf-8')
+
+
+def main():  # type: () -> None
+    """
+    Execute the script, presumably from the command line
+    """
+    args = parse_args()
+    api = KodiApi(
+        args.host_address,
+        args.host_port,
+        args.host_path,
+        username=args.username,
+        password=args.password,
+    )
+    for path in args.paths:
+        library = MovieNfoLibrary(path)
+        for nfo in library.nfos:
+            film = Film.from_nfo(nfo)
+            if film:
+                film.sync(
+                    api,
+                    local_update=args.local_update,
+                    remote_update=args.remote_update,
+                    dry_run=args.noop,
+                )
+
+
+def parse_args():  # type: () -> argparse.Namespace
+    """
+    Parse and process command-line arguments
+    """
+    script_name = os.path.split(sys.argv[0])[-1]
+    description = __doc__
+    parser = argparse.ArgumentParser(
+        prog=script_name,
+        description=description,
+    )
+    parser.add_argument(
+        '-a',
+        '--host-address',
+        default=DEFAULT_HOST_ADDRESS,
+    )
+    parser.add_argument(
+        '-p',
+        '--host-port',
+        default=DEFAULT_HOST_PORT,
+    )
+    parser.add_argument(
+        '-P',
+        '--host-path',
+        default=DEFAULT_HOST_PATH,
+    )
+    parser.add_argument(
+        '-u',
+        '--username',
+    )
+    parser.add_argument(
+        '-w',
+        '--password',
+    )
+    parser.add_argument(
+        '-n',
+        '--noop',
+        default=True,
+        action='store_true',
+    )
+    parser.add_argument(
+        '-N',
+        '--no-noop',
+        action='store_false',
+        dest='noop',
+    )
+    parser.add_argument(
+        '-l',
+        '--local-update',
+        default=True,
+        action='store_true',
+    )
+    parser.add_argument(
+        '-L',
+        '--no-local-update',
+        action='store_false',
+        dest='local_update',
+    )
+    parser.add_argument(
+        '-r',
+        '--remote-update',
+        default=True,
+        action='store_true',
+    )
+    parser.add_argument(
+        '-R',
+        '--no-remote-update',
+        action='store_false',
+        dest='remote_update',
+    )
+    parser.add_argument(
+        'paths',
+        nargs='*',
+        default=('.',),
+    )
+    args = parser.parse_args()
+    return args
+
+
+if __name__ == '__main__':
+    main()
