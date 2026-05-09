@@ -29,11 +29,6 @@ except ImportError:
     pass
 
 
-DEFAULT_HOST_ADDRESS = os.environ.get('KODI_HOST_ADDRESS', 'http://127.0.0.1')
-DEFAULT_HOST_PORT = os.environ.get('KODI_HOST_PORT', '80')
-DEFAULT_HOST_PATH = os.environ.get('KODI_HOST_PATH', 'jsonrpc')
-
-
 def parse_types(data):  # type: (dict) -> dict
     """
     Parse string -> type within a dict
@@ -648,17 +643,17 @@ def parse_args():  # type: () -> argparse.Namespace
     parser.add_argument(
         '-a',
         '--host-address',
-        default=DEFAULT_HOST_ADDRESS,
+        default=os.environ.get('KODI_HOST_ADDRESS', 'http://127.0.0.1'),
     )
     parser.add_argument(
         '-p',
         '--host-port',
-        default=DEFAULT_HOST_PORT,
+        default=os.environ.get('KODI_HOST_PORT', '80'),
     )
     parser.add_argument(
         '-P',
         '--host-path',
-        default=DEFAULT_HOST_PATH,
+        default=os.environ.get('KODI_HOST_PATH', 'jsonrpc'),
     )
     parser.add_argument(
         '-u',
