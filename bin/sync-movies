@@ -255,13 +255,13 @@ class NfoLibrary:
         """
         if cls is NfoLibrary:
             raise NotImplementedError
-        possible_nfos = (
+        _possible_nfos = (
             # specific
             os.path.join(top, os.path.extsep.join([directory_name, 'nfo'])),
             # generic
             os.path.join(top, os.path.extsep.join([cls.NFO_NAME_BASE, 'nfo'])),
         )
-        return possible_nfos
+        return _possible_nfos
 
     def get_nfos(self, top=None):  # type: (str) -> Iterable[str]
         """
