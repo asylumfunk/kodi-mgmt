@@ -82,6 +82,21 @@ def parse_datetime(timestamp_string):  # type: (Optional[str]) -> Optional[datet
     return None
 
 
+def parse_string(_input, default=''):  # type: (Any, str) -> str
+    """
+    Convert a string-like into an string
+    """
+    if hasattr(_input, 'text'):
+        string = _input.text  # type: str
+    else:
+        string = _input
+    try:
+        value = str(string)
+    except (TypeError, ValueError):
+        value = default
+    return value
+
+
 DATA_TYPES = {
     'datetime': {
         'handler': parse_datetime,
@@ -107,7 +122,7 @@ DATA_TYPES = {
         ],
     },
     'str': {
-        'handler': parse_int,
+        'handler': parse_string,
         'keys': [
             'title',
             'mpaa',
