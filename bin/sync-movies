@@ -47,13 +47,17 @@ def parse_types(data):  # type: (dict) -> dict
     return data
 
 
-def parse_int(string, default=0):  # type: (str, int) -> int
+def parse_int(_input, default=0):  # type: (Any, int) -> int
     """
     Convert a string into an integer
     """
+    if hasattr(_input, 'text'):
+        string = _input.text  # type: str
+    else:
+        string = str(_input)
     try:
         value = int(string)
-    except TypeError:
+    except (TypeError, ValueError):
         value = default
     return value
 
@@ -156,7 +160,7 @@ def update_playcount_history(movie_node):  # type: (ET.Element) -> None
         playcount_node = playcount_nodes[0]
     else:
         playcount_node = ET.SubElement(movie_node, 'playcount')
-    playcount = int(playcount_node.text or 0)
+    playcount = parse_int(playcount_node, 0)
     lastplayed_nodes = movie_node.findall('./history/lastplayed')
     count_lastplayed_nodes = len(lastplayed_nodes)
     history_node = init_history_node(movie_node)
@@ -341,10 +345,7 @@ class Film:
             item = 0
             if len(nodes) > 0:
                 node = nodes[0]
-                try:
-                    item = int(node.text or 0)
-                except ValueError:
-                    item = 0
+                item = parse_int(node, 0)
             data[int_type] = item
 
     @classmethod
