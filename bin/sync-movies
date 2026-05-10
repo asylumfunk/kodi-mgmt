@@ -269,15 +269,27 @@ class NfoLibrary:
         """
         top = top or os.path.abspath(self.root)
         directory_name = os.path.basename(top)
+        dirs, files = [], []
+        for file_name in os.listdir(top):
+            file_path = os.path.join(top, file_name)
+            if os.path.isdir(file_path):
+                dirs.append(file_path)
+            elif os.path.isfile(file_path):
+                if os.path.splitext(file_name)[-1].lower() == '.nfo':
+                    files.append(file_path)
         for possible_nfo in self.possible_nfos(top, directory_name):
-            if os.path.exists(possible_nfo):
+            # We must wait to check these until after the _entire_ file
+            # listing is generated, since they are in order of
+            # preference.
+            if possible_nfo in files:
                 yield possible_nfo
+                # Once we find an nfo file in a directory, stop recursion.
                 return
-        for _, dirs, _ in os.walk(top):
-            for _dir in dirs:
-                _dir = os.path.join(top, _dir)
-                for nfo in self.get_nfos(_dir):
-                    yield nfo
+        for _dir in list(dirs):
+            _dir = os.path.join(top, _dir)
+            for nfo in self.get_nfos(_dir):
+                yield nfo
+        return
 
 
 class MovieNfoLibrary(NfoLibrary):
