@@ -62,12 +62,16 @@ def parse_int(_input, default=0):  # type: (Any, int) -> int
     return value
 
 
-def parse_datetime(timestamp_string):  # type: (Optional[str]) -> Optional[datetime]
+def parse_datetime(_input, default=None):  # type: (Any, Optional[datetime]) -> Optional[datetime]
     """
     Parse a string into a datetime
     """
-    if not timestamp_string:
-        return None
+    if _input is None:
+        return default
+    if hasattr(_input, 'text'):
+        string = _input.text  # type: str
+    else:
+        string = str(_input)
     datetime_formats = (
         '%Y-%m-%d %H:%M:%S',
         '%Y-%m-%d %H:%M',
@@ -75,11 +79,11 @@ def parse_datetime(timestamp_string):  # type: (Optional[str]) -> Optional[datet
     )
     for datetime_format in datetime_formats:
         try:
-            timestamp = datetime.strptime(timestamp_string, datetime_format)
+            timestamp = datetime.strptime(string, datetime_format)
             return timestamp
-        except ValueError:
+        except (TypeError, ValueError):
             continue
-    return None
+    return default
 
 
 def parse_string(_input, default=''):  # type: (Any, str) -> str
