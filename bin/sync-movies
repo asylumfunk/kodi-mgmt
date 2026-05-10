@@ -103,6 +103,7 @@ def parse_string(_input, default=''):  # type: (Any, str) -> str
 
 DATA_TYPES = {
     'datetime': {
+        'default': None,
         'handler': parse_datetime,
         'keys': [
             'lastplayed',
@@ -110,6 +111,7 @@ DATA_TYPES = {
         ],
     },
     'int': {
+        'default': 0,
         'handler': parse_int,
         'keys': [
             'playcount',
@@ -126,6 +128,7 @@ DATA_TYPES = {
         ],
     },
     'str': {
+        'default': '',
         'handler': parse_string,
         'keys': [
             'title',
@@ -337,35 +340,17 @@ class Film:
         return string
 
     @classmethod
-    def _from_nfo_datetime(cls, data, movie_node):  # type: (dict, ET.Element) -> None
-        for date_type in DATA_TYPES['datetime']['keys']:
-            nodes = movie_node.findall('./' + date_type)
-            item_date = None  # type: Optional[datetime]
-            if len(nodes) > 0:
-                node = nodes[0]
-                item = node.text  # type: Optional[str]
-                item_date = parse_datetime(item)
-            data[date_type] = item_date
-
-    @classmethod
-    def _from_nfo_str(cls, data, movie_node):  # type: (dict, ET.Element) -> None
-        for string_type in DATA_TYPES['str']['keys']:
-            item = ''
-            nodes = movie_node.findall('./' + string_type)
-            if len(nodes) > 0:
-                node = nodes[0]
-                item = node.text or ''
-            data[string_type] = item
-
-    @classmethod
-    def _from_nfo_int(cls, data, movie_node):  # type: (dict, ET.Element) -> None
-        for int_type in DATA_TYPES['int']['keys']:
-            nodes = movie_node.findall('./' + int_type)
-            item = 0
-            if len(nodes) > 0:
-                node = nodes[0]
-                item = parse_int(node, 0)
-            data[int_type] = item
+    def _from_nfo_types(cls, data, movie_node):  # type: (dict, ET.Element) -> None
+        for key, _type in DATA_TYPES.items():
+            if key == 'list':
+                continue
+            for attribute in _type['keys']:
+                nodes = movie_node.findall('./' + attribute)
+                item = _type['default']  # type: Any
+                if len(nodes) > 0:
+                    node = nodes[0]
+                    item = _type['handler'](node, _type['default'])
+                data[attribute] = item
 
     @classmethod
     def _from_nfo_list(cls, data, movie_node):  # type: (dict, ET.Element) -> None
@@ -388,9 +373,7 @@ class Film:
         if movie_node is None:
             return None
         data = {}  # type: Dict[str, Any]
-        cls._from_nfo_datetime(data, movie_node)
-        cls._from_nfo_str(data, movie_node)
-        cls._from_nfo_int(data, movie_node)
+        cls._from_nfo_types(data, movie_node)
         cls._from_nfo_list(data, movie_node)
         film = cls(data, nfo=nfo)
         return film
