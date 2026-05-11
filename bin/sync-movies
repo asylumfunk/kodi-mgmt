@@ -661,6 +661,51 @@ class Media:
                 tree.write(nfo_out, xml_declaration=False, encoding='utf-8')
 
 
+class Show(Media):
+    """
+    Represent a movie within Kodi
+    """
+    ROOT_NODE_TAG_NAME = 'tvshow'
+    API_METHOD_GET_ALL = 'VideoLibrary.GetTVShows'
+    API_METHOD_SET_ONE = 'VideoLibrary.SetTVShowDetails'
+    API_METHOD_GET_RESULT_KEY = 'tvshows'
+    SHOULD_TOUCH_HISTORY_NODE = False
+    ID_KEY = 'tvshowid'
+    DATA_TYPES_EXTRA = {
+        'datetime': {
+            'keys': [
+            ],
+        },
+        'int': {
+            'keys': [
+                'watchedepisodes',
+                'episode',
+                'season',
+                ## rating: TODO float
+            ],
+        },
+        'list': {
+            'keys': [
+            ],
+        },
+        'str': {
+            'keys': [
+                'premiered',
+                # 'tagline',  # new(v22) on tvshow
+                # 'plotoutline',  # mismatch?
+                ## 'status',
+            ],
+        },
+    }  # type: Dict[str, Dict[str, Any]]
+
+    def __init__(self, data, nfo=None):  # type: (dict, str) -> None
+        if sys.version_info[0] == 2:
+            # pylint: disable=super-with-arguments
+            super(Show, self).__init__(data, nfo)
+        else:
+            super().__init__(data, nfo)
+
+
 class Film(Media):
     """
     Represent a movie within Kodi
@@ -707,7 +752,7 @@ class Film(Media):
 
 
 def _main_sync(args, cls_media, cls_library):
-    # type: (argparse.Namespace, Type[Film], Type[MovieNfoLibrary]) -> None
+    # type: (argparse.Namespace, Type[Media], Type[NfoLibrary]) -> None
     api = KodiApi(
         args.host_address,
         args.host_port,
@@ -733,8 +778,16 @@ def main():  # type: () -> None
     Execute the script from the command line
     """
     args = parse_args()
-    cls_media = Film  # type: Type[Film]
-    cls_library = MovieNfoLibrary  # type: Type[MovieNfoLibrary]
+    cls_media = None  # type: Optional[Type[Media]]
+    cls_library = None  # type: Optional[Type[NfoLibrary]]
+    if args.type == 'film':
+        cls_media = Film
+        cls_library = MovieNfoLibrary
+    elif args.type == 'show':
+        cls_media = Show
+        cls_library = ShowNfoLibrary
+    else:
+        raise NotImplementedError(args.type)
     _main_sync(args, cls_media, cls_library)
 
 
@@ -806,6 +859,15 @@ def parse_args():  # type: () -> argparse.Namespace
         '--no-remote-update',
         action='store_false',
         dest='remote_update',
+    )
+    parser.add_argument(
+        '-t',
+        '--type',
+        default='film',
+        choices=(
+            'film',
+            'show',
+        ),
     )
     parser.add_argument(
         'paths',
