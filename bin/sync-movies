@@ -280,7 +280,16 @@ class NfoLibrary:
         List all candidate nfo file pathnames within a directory
         """
         if cls is NfoLibrary:
-            raise NotImplementedError
+            raise NotImplementedError(
+                "{cls} must be subclassed and should not be used directly".format(
+                    cls=cls.__name__,
+                )
+            )
+        if cls.NFO_NAME_BASE is None:
+            raise NotImplementedError("{cls} must set {var} to a non-None value".format(
+                cls=cls.__name__,
+                var='NFO_NAME_BASE',
+            ))
         _possible_nfos = (
             # specific
             os.path.join(top, os.path.extsep.join([directory_name, 'nfo'])),
