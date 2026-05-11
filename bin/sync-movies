@@ -29,11 +29,6 @@ except ImportError:
     pass
 
 
-DEFAULT_HOST_ADDRESS = os.environ.get('KODI_HOST_ADDRESS', 'http://127.0.0.1')
-DEFAULT_HOST_PORT = os.environ.get('KODI_HOST_PORT', '80')
-DEFAULT_HOST_PATH = os.environ.get('KODI_HOST_PATH', 'jsonrpc')
-
-
 def parse_types(data):  # type: (dict) -> dict
     """
     Parse string -> type within a dict
@@ -52,23 +47,31 @@ def parse_types(data):  # type: (dict) -> dict
     return data
 
 
-def parse_int(string, default=0):  # type: (str, int) -> int
+def parse_int(_input, default=0):  # type: (Any, int) -> int
     """
     Convert a string into an integer
     """
+    if hasattr(_input, 'text'):
+        string = _input.text  # type: str
+    else:
+        string = str(_input)
     try:
         value = int(string)
-    except TypeError:
+    except (TypeError, ValueError):
         value = default
     return value
 
 
-def parse_datetime(timestamp_string):  # type: (Optional[str]) -> Optional[datetime]
+def parse_datetime(_input, default=None):  # type: (Any, Optional[datetime]) -> Optional[datetime]
     """
     Parse a string into a datetime
     """
-    if not timestamp_string:
-        return None
+    if _input is None:
+        return default
+    if hasattr(_input, 'text'):
+        string = _input.text  # type: str
+    else:
+        string = str(_input)
     datetime_formats = (
         '%Y-%m-%d %H:%M:%S',
         '%Y-%m-%d %H:%M',
@@ -76,15 +79,31 @@ def parse_datetime(timestamp_string):  # type: (Optional[str]) -> Optional[datet
     )
     for datetime_format in datetime_formats:
         try:
-            timestamp = datetime.strptime(timestamp_string, datetime_format)
+            timestamp = datetime.strptime(string, datetime_format)
             return timestamp
-        except ValueError:
+        except (TypeError, ValueError):
             continue
-    return None
+    return default
+
+
+def parse_string(_input, default=''):  # type: (Any, str) -> str
+    """
+    Convert a string-like into an string
+    """
+    if hasattr(_input, 'text'):
+        string = _input.text  # type: str
+    else:
+        string = _input
+    try:
+        value = str(string)
+    except (TypeError, ValueError):
+        value = default
+    return value
 
 
 DATA_TYPES = {
     'datetime': {
+        'default': None,
         'handler': parse_datetime,
         'keys': [
             'lastplayed',
@@ -92,6 +111,7 @@ DATA_TYPES = {
         ],
     },
     'int': {
+        'default': 0,
         'handler': parse_int,
         'keys': [
             'playcount',
@@ -108,7 +128,8 @@ DATA_TYPES = {
         ],
     },
     'str': {
-        'handler': parse_int,
+        'default': '',
+        'handler': parse_string,
         'keys': [
             'title',
             'mpaa',
@@ -161,7 +182,7 @@ def update_playcount_history(movie_node):  # type: (ET.Element) -> None
         playcount_node = playcount_nodes[0]
     else:
         playcount_node = ET.SubElement(movie_node, 'playcount')
-    playcount = int(playcount_node.text or 0)
+    playcount = parse_int(playcount_node, 0)
     lastplayed_nodes = movie_node.findall('./history/lastplayed')
     count_lastplayed_nodes = len(lastplayed_nodes)
     history_node = init_history_node(movie_node)
@@ -170,24 +191,23 @@ def update_playcount_history(movie_node):  # type: (ET.Element) -> None
         count_lastplayed_nodes += 1
 
 
-def indent(elem, level=0):  # type: (ET.Element, int) -> None
+def indent(element, level=0, indent_size=4):  # type: (ET.Element, int, int) -> None
     """
     Indent the XML tree consistently
     """
-    indent_size = 4
-    i = "\n" + level * (indent_size * " ")
-    if len(elem):
-        if not elem.text or not elem.text.strip():
-            elem.text = i + (indent_size * " ")
-        if not elem.tail or not elem.tail.strip():
-            elem.tail = i
-        for _elem in elem:
+    i = '\n' + level * (indent_size * ' ')
+    if len(element):
+        if not element.text or not element.text.strip():
+            element.text = i + (indent_size * ' ')
+        if not element.tail or not element.tail.strip():
+            element.tail = i
+        for _elem in element:
             indent(_elem, level + 1)
-        if not elem.tail or not elem.tail.strip():
-            elem.tail = i
+        if not element.tail or not element.tail.strip():
+            element.tail = i
     else:
-        if level and (not elem.tail or not elem.tail.strip()):
-            elem.tail = i
+        if level and (not element.tail or not element.tail.strip()):
+            element.tail = i
 
 
 class KodiApi:
@@ -260,35 +280,51 @@ class NfoLibrary:
         List all candidate nfo file pathnames within a directory
         """
         if cls is NfoLibrary:
-            raise NotImplementedError
-        possible_nfos = (
+            raise NotImplementedError(
+                "{cls} must be subclassed and should not be used directly".format(
+                    cls=cls.__name__,
+                )
+            )
+        if cls.NFO_NAME_BASE is None:
+            raise NotImplementedError("{cls} must set {var} to a non-None value".format(
+                cls=cls.__name__,
+                var='NFO_NAME_BASE',
+            ))
+        _possible_nfos = (
             # specific
             os.path.join(top, os.path.extsep.join([directory_name, 'nfo'])),
             # generic
             os.path.join(top, os.path.extsep.join([cls.NFO_NAME_BASE, 'nfo'])),
         )
-        return possible_nfos
+        return _possible_nfos
 
-    @property
-    def nfos(self):  # type: () -> Iterable[str]
+    def get_nfos(self, top=None):  # type: (str) -> Iterable[str]
         """
         Find all nfo metadata files within the library root
         """
-        for nfo in self._walk():
-            yield nfo
-
-    def _walk(self, top=None):  # type: (str) -> Iterable[str]
         top = top or os.path.abspath(self.root)
         directory_name = os.path.basename(top)
+        dirs, files = [], []
+        for file_name in os.listdir(top):
+            file_path = os.path.join(top, file_name)
+            if os.path.isdir(file_path):
+                dirs.append(file_path)
+            elif os.path.isfile(file_path):
+                if os.path.splitext(file_name)[-1].lower() == '.nfo':
+                    files.append(file_path)
         for possible_nfo in self.possible_nfos(top, directory_name):
-            if os.path.exists(possible_nfo):
+            # We must wait to check these until after the _entire_ file
+            # listing is generated, since they are in order of
+            # preference.
+            if possible_nfo in files:
                 yield possible_nfo
+                # Once we find an nfo file in a directory, stop recursion.
                 return
-        for _, dirs, _ in os.walk(top):
-            for _dir in dirs:
-                _dir = os.path.join(top, _dir)
-                for nfo in self._walk(_dir):
-                    yield nfo
+        for _dir in list(dirs):
+            _dir = os.path.join(top, _dir)
+            for nfo in self.get_nfos(_dir):
+                yield nfo
+        return
 
 
 class MovieNfoLibrary(NfoLibrary):
@@ -313,38 +349,17 @@ class Film:
         return string
 
     @classmethod
-    def _from_nfo_datetime(cls, data, movie_node):  # type: (dict, ET.Element) -> None
-        for date_type in DATA_TYPES['datetime']['keys']:
-            nodes = movie_node.findall('./' + date_type)
-            item_date = None  # type: Optional[datetime]
-            if len(nodes) > 0:
-                node = nodes[0]
-                item = node.text  # type: Optional[str]
-                item_date = parse_datetime(item)
-            data[date_type] = item_date
-
-    @classmethod
-    def _from_nfo_str(cls, data, movie_node):  # type: (dict, ET.Element) -> None
-        for string_type in DATA_TYPES['str']['keys']:
-            item = ''
-            nodes = movie_node.findall('./' + string_type)
-            if len(nodes) > 0:
-                node = nodes[0]
-                item = node.text or ''
-            data[string_type] = item
-
-    @classmethod
-    def _from_nfo_int(cls, data, movie_node):  # type: (dict, ET.Element) -> None
-        for int_type in DATA_TYPES['int']['keys']:
-            nodes = movie_node.findall('./' + int_type)
-            item = 0
-            if len(nodes) > 0:
-                node = nodes[0]
-                try:
-                    item = int(node.text or 0)
-                except ValueError:
-                    item = 0
-            data[int_type] = item
+    def _from_nfo_types(cls, data, movie_node):  # type: (dict, ET.Element) -> None
+        for key, _type in DATA_TYPES.items():
+            if key == 'list':
+                continue
+            for attribute in _type['keys']:
+                nodes = movie_node.findall('./' + attribute)
+                item = _type['default']  # type: Any
+                if len(nodes) > 0:
+                    node = nodes[0]
+                    item = _type['handler'](node, _type['default'])
+                data[attribute] = item
 
     @classmethod
     def _from_nfo_list(cls, data, movie_node):  # type: (dict, ET.Element) -> None
@@ -367,9 +382,7 @@ class Film:
         if movie_node is None:
             return None
         data = {}  # type: Dict[str, Any]
-        cls._from_nfo_datetime(data, movie_node)
-        cls._from_nfo_str(data, movie_node)
-        cls._from_nfo_int(data, movie_node)
+        cls._from_nfo_types(data, movie_node)
         cls._from_nfo_list(data, movie_node)
         film = cls(data, nfo=nfo)
         return film
@@ -624,7 +637,7 @@ def main():  # type: () -> None
     )
     for path in args.paths:
         library = MovieNfoLibrary(path)
-        for nfo in library.nfos:
+        for nfo in library.get_nfos():
             film = Film.from_nfo(nfo)
             if film:
                 film.sync(
@@ -648,17 +661,17 @@ def parse_args():  # type: () -> argparse.Namespace
     parser.add_argument(
         '-a',
         '--host-address',
-        default=DEFAULT_HOST_ADDRESS,
+        default=os.environ.get('KODI_HOST_ADDRESS', 'http://127.0.0.1'),
     )
     parser.add_argument(
         '-p',
         '--host-port',
-        default=DEFAULT_HOST_PORT,
+        default=os.environ.get('KODI_HOST_PORT', '80'),
     )
     parser.add_argument(
         '-P',
         '--host-path',
-        default=DEFAULT_HOST_PATH,
+        default=os.environ.get('KODI_HOST_PATH', 'jsonrpc'),
     )
     parser.add_argument(
         '-u',

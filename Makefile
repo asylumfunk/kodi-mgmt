@@ -3,7 +3,7 @@ BIN_DIR = ./bin
 MYPY_BIN = mypy
 MYPY = $(MYPY_BIN) --config-file '$(MYPY_CONFIG)'
 MYPY_CONFIG = pyproject.toml
-PY_FILES = $(wildcard $(BIN_DIR)/*)
+PY_FILES = $(shell grep --files-with-match '#!/usr/bin/env python' bin/*)
 PYLINT = pylint
 
 .PHONY: all
