@@ -472,13 +472,6 @@ class Media:
             }  # type: Dict[str, Any]
             for _, value in cls.data_types().items():
                 payload['params']['properties'].extend(value['keys'])
-            original_title = media.data.get('originaltitle')
-            if original_title:
-                payload['params']['filter']['and'].append({
-                    'field': 'originaltitle',
-                    'operator': 'is',
-                    'value': original_title,
-                })
             result = api.call(payload)
             medias = result.get(cls.API_METHOD_GET_RESULT_KEY, [])
             if len(medias) < 1:
