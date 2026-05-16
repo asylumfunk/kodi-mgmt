@@ -227,6 +227,7 @@ class NfoLibrary:
     """
     Define an nfo library for generic media
     """
+    # pylint: disable=too-few-public-methods
     __metaclass__ = ABCMeta
     NFO_NAME_BASE = None  # type: str
 
@@ -235,7 +236,7 @@ class NfoLibrary:
         self.root = root
 
     @classmethod
-    def possible_nfos(cls, top, directory_name):  # type: (str, str) -> Iterable[str]
+    def _possible_nfos(cls, top, directory_name):  # type: (str, str) -> Iterable[str]
         """
         List all candidate nfo file pathnames within a directory
         """
@@ -272,7 +273,7 @@ class NfoLibrary:
             elif os.path.isfile(file_path):
                 if os.path.splitext(file_name)[-1].lower() == '.nfo':
                     files.append(file_path)
-        for possible_nfo in self.possible_nfos(top, directory_name):
+        for possible_nfo in self._possible_nfos(top, directory_name):
             # We must wait to check these until after the _entire_ file
             # listing is generated, since they are in order of
             # preference.
