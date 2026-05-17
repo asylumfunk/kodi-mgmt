@@ -804,10 +804,9 @@ def _main_sync(args, cls_media, cls_library):
     )
     for path in args.paths:
         library = cls_library(path)
-        for nfo in library.get_nfos():
-            media = cls_media.from_nfo(nfo)
-            if media:
-                media.sync(
+        for item in library.items():
+            if item:
+                item.sync(
                     api,
                     local_update=args.local_update,
                     remote_update=args.remote_update,
