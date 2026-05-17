@@ -403,6 +403,7 @@ class Media:
         # 'art',
     }  # type: Dict[str, Dict[str, Any]]
     DATA_TYPES_EXTRA = {}  # type: Dict[str, Dict[str, Any]]
+    DATA_TYPES_OMIT = []  # type: List[str]
 
 
     @classmethod
@@ -412,6 +413,12 @@ class Media:
         media type
         """
         types = deepcopy(cls.DATA_TYPES)
+        for key, value in types.items():
+            types[key]['keys'] = [
+                subkey
+                for subkey in types[key]['keys']
+                if subkey not in cls.DATA_TYPES_OMIT
+            ]
         for key, value in cls.DATA_TYPES_EXTRA.items():
             types[key]['keys'].extend(value['keys'])
         return types
