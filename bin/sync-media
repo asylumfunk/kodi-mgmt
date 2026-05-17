@@ -460,13 +460,11 @@ class Media:
             if error.msg.startswith('junk after document element:'):
                 print("MULTI EPISODE FOUND", nfo)
                 return None
-            elif error.msg.startswith('syntax error:'):
+            if error.msg.startswith('syntax error:'):
                 print("SYNTAX ERROR FOUND", nfo)
                 return None
-            else:
-                print("NEW ERROR FOUND", error.msg, nfo)
-                return None
-            raise
+            print("NEW ERROR FOUND", error.msg, nfo)
+            return None
         root_node = cls._get_root_node(tree)
         if root_node is None:
             return None
