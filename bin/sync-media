@@ -475,15 +475,15 @@ class Media:
             result = api.call(payload)
             medias = result.get(cls.API_METHOD_GET_RESULT_KEY, [])
             if len(medias) < 1:
-                print("NONE FOUND", media.data['title'], media.data['year'], media.nfo)
+                print("NONE FOUND", media.data['title'], media.data.get('year'), media.nfo)
                 print('*' * 20)
             elif len(medias) > 1:
-                print("TOO MANY FOUND", media.data['title'], media.data['year'], media.nfo)
+                print("TOO MANY FOUND", media.data['title'], media.data.get('year'), media.nfo)
                 for _media in medias:
                     print(_media)
                 print('*' * 20)
             else:
-                print("MATCH FOUND", media.data['title'], media.data['year'], media.nfo)
+                print("MATCH FOUND", media.data['title'], media.data.get('year'), media.nfo)
                 data = medias[0]
                 data = parse_types(data)
                 media = cls(data)
