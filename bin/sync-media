@@ -292,13 +292,6 @@ class NfoLibrary:
         """
         The object class used to instantiate items in this library
         """
-        cls = type(self)
-        if cls is NfoLibrary:
-            raise NotImplementedError(
-                "{cls} must be subclassed and the item_class property implemented".format(
-                    cls=cls.__name__,
-                )
-            )
         return Media
 
     def items(self):  # type: () -> Iterable[Media]
