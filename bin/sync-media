@@ -793,8 +793,8 @@ class Film(Media):
     }  # type: Dict[str, Dict[str, Any]]
 
 
-def _main_sync(args, cls_media, cls_library):
-    # type: (argparse.Namespace, Type[Media], Type[NfoLibrary]) -> None
+def _main_sync(args, cls_library):
+    # type: (argparse.Namespace, Type[NfoLibrary]) -> None
     api = KodiApi(
         args.host_address,
         args.host_port,
@@ -819,17 +819,14 @@ def main():  # type: () -> None
     Execute the script from the command line
     """
     args = parse_args()
-    cls_media = None  # type: Optional[Type[Media]]
     cls_library = None  # type: Optional[Type[NfoLibrary]]
     if args.type == 'film':
-        cls_media = Film
         cls_library = MovieNfoLibrary
     elif args.type == 'show':
-        cls_media = Show
         cls_library = ShowNfoLibrary
     else:
         raise NotImplementedError(args.type)
-    _main_sync(args, cls_media, cls_library)
+    _main_sync(args, cls_library)
 
 
 def parse_args():  # type: () -> argparse.Namespace
