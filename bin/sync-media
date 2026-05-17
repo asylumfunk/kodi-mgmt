@@ -337,6 +337,54 @@ class ShowNfoLibrary(NfoLibrary):
         return Show
 
 
+class EpisodeNfoLibrary(NfoLibrary):
+    """
+    Define an nfo library for TV show episodes
+    """
+    # pylint: disable=too-few-public-methods
+    NFO_NAME_BASE = 'episodedetails'
+    SKIP_HIDDEN_DIRECTORIES = True
+
+    @property
+    def item_class(self):  # type: () -> Type[Episode]
+        """
+        The object class used to instantiate items in this library
+        """
+        return Episode
+
+    def get_nfos(self, top=None):  # type: (str) -> Iterable[str]
+        """
+        Find all nfo metadata files within the show root
+        """
+        top = top or os.path.abspath(self.root)
+        dirs, files = [], []
+        for file_name in os.listdir(top):
+            file_path = os.path.join(top, file_name)
+            if os.path.isdir(file_path):
+                if self.SKIP_HIDDEN_DIRECTORIES and file_name[0] == '.':
+                    continue
+                dirs.append(file_path)
+            elif os.path.isfile(file_path):
+                if file_name.lower() == 'readme.nfo' or file_name.lower() == 'release.nfo':
+                    continue
+                if (os.path.splitext(file_name)[-1].lower() == '.nfo' and
+                    (top is None or os.path.basename(file_name).lower() != 'tvshow.nfo')
+                ):
+                    files.append(file_path)
+        count = 0
+        for nfo in files:
+            yield nfo
+            count += 1
+        if count:
+            # Once we find an nfo file in a directory, stop recursion.
+            return
+        for _dir in list(dirs):
+            _dir = os.path.join(top, _dir)
+            for nfo in self.get_nfos(_dir):
+                yield nfo
+        return
+
+
 class Media:
     """
     Generic handling of Kodi library items
@@ -741,6 +789,7 @@ class Show(Media):
     API_METHOD_SET_ONE = 'VideoLibrary.SetTVShowDetails'
     API_METHOD_GET_RESULT_KEY = 'tvshows'
     SHOULD_TOUCH_HISTORY_NODE = False
+    CHILD_LIBRARY = EpisodeNfoLibrary  # type: Type[NfoLibrary]
     ID_KEY = 'tvshowid'
     DATA_TYPES_EXTRA = {
         'datetime': {
@@ -768,6 +817,86 @@ class Show(Media):
             ],
         },
     }  # type: Dict[str, Dict[str, Any]]
+
+
+class Episode(Media):
+    """
+    TV Show Episodes Media type
+    """
+
+    ROOT_NODE_TAG_NAME = 'episodedetails'
+    ID_KEY = 'episodeid'
+    API_METHOD_GET_ALL = 'VideoLibrary.GetEpisodes'
+    API_METHOD_GET_RESULT_KEY = 'episodes'
+    DATA_TYPES_OMIT = [
+        'genre',
+        'mpaa',
+        'originaltitle',  # ???
+        'outline',
+        'sorttitle',
+        'studio',
+        'tag',
+        'votes',   # ???
+        'year',
+
+        'thumbnail',
+        'file',  # ???
+    ]  # type: List[str]
+    DATA_TYPES_EXTRA = {
+        'datetime': {
+            'keys': [
+            ],
+        },
+        'int': {
+            'keys': [
+                'episode',
+                'season',
+                # 'displayepisode',  # mismatch
+                # 'displayseason',  # mismatch
+                'tvshowid',
+                # 'seasonid', ???
+                ## rating: TODO float
+            ],
+        },
+        'list': {
+            'keys': [
+            ],
+        },
+        'str': {
+            'keys': [
+                # 'firstaired', ???
+                # 'productioncode', ???
+                'showtitle',
+                # 'outline',
+                # 'tagline',  # new(v22) on tvshow
+                # 'plotoutline',  # mismatch?
+                ## 'status',
+            ],
+        },
+    }  # type: Dict[str, Dict[str, Any]]
+
+    @property
+    def lookup_filter(self):  # type: () -> Dict[str, List]
+        _filter = {
+            'and': [
+                {
+                    'field': 'tvshow',
+                    'operator': 'is',
+                    'value': str(self.data['showtitle']),
+                },
+                {
+                    'field': 'episode',
+                    'operator': 'is',
+                    'value': str(self.data['episode']),
+                },
+                {
+                    'field': 'season',
+                    'operator': 'is',
+                    'value': str(self.data['season']),
+                },
+            ],
+        }
+        return _filter
 
 
 class Film(Media):
