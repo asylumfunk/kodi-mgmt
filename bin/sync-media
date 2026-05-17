@@ -695,6 +695,13 @@ class Media:
         self.to_nfo(self.nfo, local, nfo_changes, dry_run)
         if api_changes or nfo_changes:
             print('*' * 20)
+        for child in self.children:
+            child.sync(
+                api,
+                local_update=local_update,
+                remote_update=remote_update,
+                dry_run=dry_run,
+            )
         return bool(api_changes or nfo_changes)
 
     def to_api(self, api, remote, changes, dry_run):
