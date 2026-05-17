@@ -287,6 +287,32 @@ class NfoLibrary:
                 yield nfo
         return
 
+    @property
+    def item_class(self):  # type: () -> Type[Media]
+        """
+        The object class used to instantiate items in this library
+        """
+        cls = type(self)
+        if cls is NfoLibrary:
+            raise NotImplementedError(
+                "{cls} must be subclassed and the item_class property implemented".format(
+                    cls=cls.__name__,
+                )
+            )
+        return Media
+
+    def items(self):  # type: () -> Iterable[Media]
+        """
+        Access all of the linked media objects in the library
+        """
+        for nfo in self.get_nfos():
+            item = self.item_class.from_nfo(nfo)
+            if item:
+                yield item
+            else:
+                print("NO ITEM HERE", nfo)
+                print('*' * 20)
+
 
 class MovieNfoLibrary(NfoLibrary):
     """
@@ -295,6 +321,13 @@ class MovieNfoLibrary(NfoLibrary):
     # pylint: disable=too-few-public-methods
     NFO_NAME_BASE = 'movie'
 
+    @property
+    def item_class(self):  # type: () -> Type[Film]
+        """
+        The object class used to instantiate items in this library
+        """
+        return Film
+
 
 class ShowNfoLibrary(NfoLibrary):
     """
@@ -302,6 +335,13 @@ class ShowNfoLibrary(NfoLibrary):
     """
     # pylint: disable=too-few-public-methods
     NFO_NAME_BASE = 'tvshow'
+
+    @property
+    def item_class(self):  # type: () -> Type[Show]
+        """
+        The object class used to instantiate items in this library
+        """
+        return Show
 
 
 class Media:
