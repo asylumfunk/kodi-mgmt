@@ -397,6 +397,7 @@ class Media:
     }  # type: Dict[str, Dict[str, Any]]
     DATA_TYPES_EXTRA = {}  # type: Dict[str, Dict[str, Any]]
     DATA_TYPES_OMIT = []  # type: List[str]
+    CHILD_LIBRARY = None  # type: Optional[Type[NfoLibrary]]
 
 
     @classmethod
@@ -715,6 +716,20 @@ class Media:
             with open(nfo, 'wb') as nfo_out:
                 nfo_out.write(b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
                 tree.write(nfo_out, xml_declaration=False, encoding='utf-8')
+
+    @property
+    def children(self):  # type: () -> Iterable[Media]
+        """
+        Fetch associated children Media items, if they exist
+        """
+        _children = []  # type: Iterable[Media]
+        if self.CHILD_LIBRARY is not None and self.nfo:
+            directory = os.path.dirname(self.nfo)
+            # pylint: disable=not-callable
+            child_library = self.CHILD_LIBRARY(directory)
+            _children = child_library.items()
+        for child in _children:
+            yield child
 
 
 class Show(Media):
