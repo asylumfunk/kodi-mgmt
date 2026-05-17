@@ -25,7 +25,7 @@ except ImportError:
     from urllib2 import urlopen  # type: ignore
     from urllib2 import Request  # type: ignore
 try:
-    from typing import Any, Dict, Iterable, Optional, Type
+    from typing import Any, Dict, Iterable, List, Optional, Type
 except ImportError:
     pass
 
@@ -287,6 +287,32 @@ class NfoLibrary:
                 yield nfo
         return
 
+    @property
+    def item_class(self):  # type: () -> Type[Media]
+        """
+        The object class used to instantiate items in this library
+        """
+        cls = type(self)
+        if cls is NfoLibrary:
+            raise NotImplementedError(
+                "{cls} must be subclassed and the item_class property implemented".format(
+                    cls=cls.__name__,
+                )
+            )
+        return Media
+
+    def items(self):  # type: () -> Iterable[Media]
+        """
+        Access all of the linked media objects in the library
+        """
+        for nfo in self.get_nfos():
+            item = self.item_class.from_nfo(nfo)
+            if item:
+                yield item
+            else:
+                print("NO ITEM HERE", nfo)
+                print('*' * 20)
+
 
 class MovieNfoLibrary(NfoLibrary):
     """
@@ -295,6 +321,13 @@ class MovieNfoLibrary(NfoLibrary):
     # pylint: disable=too-few-public-methods
     NFO_NAME_BASE = 'movie'
 
+    @property
+    def item_class(self):  # type: () -> Type[Film]
+        """
+        The object class used to instantiate items in this library
+        """
+        return Film
+
 
 class ShowNfoLibrary(NfoLibrary):
     """
@@ -302,6 +335,13 @@ class ShowNfoLibrary(NfoLibrary):
     """
     # pylint: disable=too-few-public-methods
     NFO_NAME_BASE = 'tvshow'
+
+    @property
+    def item_class(self):  # type: () -> Type[Show]
+        """
+        The object class used to instantiate items in this library
+        """
+        return Show
 
 
 class Media:
@@ -363,6 +403,7 @@ class Media:
         # 'art',
     }  # type: Dict[str, Dict[str, Any]]
     DATA_TYPES_EXTRA = {}  # type: Dict[str, Dict[str, Any]]
+    DATA_TYPES_OMIT = []  # type: List[str]
 
 
     @classmethod
@@ -372,13 +413,20 @@ class Media:
         media type
         """
         types = deepcopy(cls.DATA_TYPES)
+        for key, value in types.items():
+            types[key]['keys'] = [
+                subkey
+                for subkey in types[key]['keys']
+                if subkey not in cls.DATA_TYPES_OMIT
+            ]
         for key, value in cls.DATA_TYPES_EXTRA.items():
             types[key]['keys'].extend(value['keys'])
         return types
 
-    def __init__(self, data, nfo=None):  # type: (dict, str) -> None
+    def __init__(self, data, nfo=None, api_id=None):  # type: (dict, Optional[str], Optional[int]) -> None
         self.data = data
         self.nfo = nfo or ''
+        self.api_id = api_id  # type: Optional[int]
 
     def __str__(self):  # type: () -> str
         string = str(self.data)
@@ -413,7 +461,19 @@ class Media:
         """
         Parse an nfo file into a Media object
         """
-        tree = ET.parse(nfo)
+        try:
+            tree = ET.parse(nfo)
+        except ET.ParseError as error:
+            if error.msg.startswith('junk after document element:'):
+                print("MULTI EPISODE FOUND", nfo)
+                return None
+            elif error.msg.startswith('syntax error:'):
+                print("SYNTAX ERROR FOUND", nfo)
+                return None
+            else:
+                print("NEW ERROR FOUND", error.msg, nfo)
+                return None
+            raise
         root_node = cls._get_root_node(tree)
         if root_node is None:
             return None
@@ -433,6 +493,28 @@ class Media:
                 root_node = None
         return root_node
 
+    @property
+    def lookup_filter(self):  # type: () -> Dict[str, List[Dict[str, str]]]
+        """
+        Let subclasses override this filter to provide custom lookups
+        """
+        _filter = {
+            'and': [
+                {
+                    'field': 'title',
+                    'operator': 'is',
+                    'value': self.data['title'],
+                },
+                {
+                    'field': 'year',
+                    'operator': 'is',
+                    # TODO: fallback to premiered.split('-')[0]
+                    'value': str(self.data['year']),
+                },
+            ],
+        }
+        return _filter
+
     @classmethod
     def from_api(cls, api, media):  # type: (KodiApi, Media) -> Optional[Media]
         """
@@ -442,21 +524,7 @@ class Media:
             payload = {
                 "method": cls.API_METHOD_GET_ALL,
                 "params": {
-                    'filter': {
-                        'and': [
-                            {
-                                'field': 'title',
-                                'operator': 'is',
-                                'value': media.data['title'],
-                            },
-                            {
-                                'field': 'year',
-                                'operator': 'is',
-                                # TODO: fallback to premiered.split('-')[0]
-                                'value': str(media.data['year']),
-                            },
-                        ],
-                    },
+                    'filter': media.lookup_filter,
                     'properties': [
                         # 'movieid',
                     ],
@@ -464,28 +532,22 @@ class Media:
             }  # type: Dict[str, Any]
             for _, value in cls.data_types().items():
                 payload['params']['properties'].extend(value['keys'])
-            original_title = media.data.get('originaltitle')
-            if original_title:
-                payload['params']['filter']['and'].append({
-                    'field': 'originaltitle',
-                    'operator': 'is',
-                    'value': original_title,
-                })
             result = api.call(payload)
             medias = result.get(cls.API_METHOD_GET_RESULT_KEY, [])
             if len(medias) < 1:
-                print("NONE FOUND", media.data['title'], media.data['year'], media.nfo)
+                print("NONE FOUND", media.data['title'], media.data.get('year'), media.nfo)
                 print('*' * 20)
             elif len(medias) > 1:
-                print("TOO MANY FOUND", media.data['title'], media.data['year'], media.nfo)
+                print("TOO MANY FOUND", media.data['title'], media.data.get('year'), media.nfo)
                 for _media in medias:
                     print(_media)
                 print('*' * 20)
             else:
-                print("MATCH FOUND", media.data['title'], media.data['year'], media.nfo)
+                print("MATCH FOUND", media.data['title'], media.data.get('year'), media.nfo)
                 data = medias[0]
                 data = parse_types(data)
-                media = cls(data)
+                api_id = data[cls.ID_KEY]
+                media = cls(data, api_id=api_id)
             return media
         return None
 
@@ -541,6 +603,8 @@ class Media:
         """
         local = self
         remote = type(self).from_api(api, self)
+        if self.api_id is None and remote is not None:
+            self.api_id = remote.api_id
         if not remote:
             return False
         api_changes = {}  # type: Dict[str, Any]
@@ -699,12 +763,12 @@ class Show(Media):
         },
     }  # type: Dict[str, Dict[str, Any]]
 
-    def __init__(self, data, nfo=None):  # type: (dict, str) -> None
+    def __init__(self, data, nfo=None, api_id=None):  # type: (dict, Optional[str], Optional[int]) -> None
         if sys.version_info[0] == 2:
             # pylint: disable=super-with-arguments
-            super(Show, self).__init__(data, nfo)
+            super(Show, self).__init__(data, nfo, api_id=api_id)
         else:
-            super().__init__(data, nfo)
+            super().__init__(data, nfo, api_id=api_id)
 
 
 class Film(Media):
@@ -763,10 +827,9 @@ def _main_sync(args, cls_media, cls_library):
     )
     for path in args.paths:
         library = cls_library(path)
-        for nfo in library.get_nfos():
-            media = cls_media.from_nfo(nfo)
-            if media:
-                media.sync(
+        for item in library.items():
+            if item:
+                item.sync(
                     api,
                     local_update=args.local_update,
                     remote_update=args.remote_update,
