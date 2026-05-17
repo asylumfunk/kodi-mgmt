@@ -423,9 +423,10 @@ class Media:
             types[key]['keys'].extend(value['keys'])
         return types
 
-    def __init__(self, data, nfo=None):  # type: (dict, str) -> None
+    def __init__(self, data, nfo=None, api_id=None):  # type: (dict, Optional[str], Optional[int]) -> None
         self.data = data
         self.nfo = nfo or ''
+        self.api_id = api_id  # type: Optional[int]
 
     def __str__(self):  # type: () -> str
         string = str(self.data)
@@ -533,7 +534,8 @@ class Media:
                 print("MATCH FOUND", media.data['title'], media.data.get('year'), media.nfo)
                 data = medias[0]
                 data = parse_types(data)
-                media = cls(data)
+                api_id = data[cls.ID_KEY]
+                media = cls(data, api_id=api_id)
             return media
         return None
 
@@ -589,6 +591,8 @@ class Media:
         """
         local = self
         remote = type(self).from_api(api, self)
+        if self.api_id is None and remote is not None:
+            self.api_id = remote.api_id
         if not remote:
             return False
         api_changes = {}  # type: Dict[str, Any]
@@ -747,12 +751,12 @@ class Show(Media):
         },
     }  # type: Dict[str, Dict[str, Any]]
 
-    def __init__(self, data, nfo=None):  # type: (dict, str) -> None
+    def __init__(self, data, nfo=None, api_id=None):  # type: (dict, Optional[str], Optional[int]) -> None
         if sys.version_info[0] == 2:
             # pylint: disable=super-with-arguments
-            super(Show, self).__init__(data, nfo)
+            super(Show, self).__init__(data, nfo, api_id=api_id)
         else:
-            super().__init__(data, nfo)
+            super().__init__(data, nfo, api_id=api_id)
 
 
 class Film(Media):
