@@ -763,13 +763,6 @@ class Show(Media):
         },
     }  # type: Dict[str, Dict[str, Any]]
 
-    def __init__(self, data, nfo=None, api_id=None):  # type: (dict, Optional[str], Optional[int]) -> None
-        if sys.version_info[0] == 2:
-            # pylint: disable=super-with-arguments
-            super(Show, self).__init__(data, nfo, api_id=api_id)
-        else:
-            super().__init__(data, nfo, api_id=api_id)
-
 
 class Film(Media):
     """
@@ -807,13 +800,6 @@ class Film(Media):
             ],
         },
     }  # type: Dict[str, Dict[str, Any]]
-
-    def __init__(self, data, nfo=None):  # type: (dict, str) -> None
-        if sys.version_info[0] == 2:
-            # pylint: disable=super-with-arguments
-            super(Film, self).__init__(data, nfo)
-        else:
-            super().__init__(data, nfo)
 
 
 def _main_sync(args, cls_media, cls_library):
