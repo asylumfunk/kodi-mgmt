@@ -192,6 +192,26 @@ class KodiApi:
             authorization = 'Basic ' + base64.b64encode(credentials).decode('utf-8')
             self._headers['Authorization'] = authorization
 
+    def __str__(self):  # type: () -> str
+        string = "{username}{host}:{port}/{path}".format(
+            host=self.host,
+            port=self.port,
+            path=self.path,
+            username=self.username + '@' if self.username else '',
+        )
+        return string
+
+    def __repr__(self):  # type: () -> str
+        cls = type(self).__name__
+        string = "{cls}(host='{host}', port={port}, path='{path}', username='{username}')".format(
+            cls=cls,
+            host=self.host,
+            port=self.port,
+            path=self.path,
+            username=self.username or '',
+        )
+        return string
+
     def call(self, data):  # type: (dict) -> Dict[str, Any]
         """
         Make a request to an endpoint with some data payload
