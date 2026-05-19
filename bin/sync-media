@@ -1160,7 +1160,7 @@ def parse_args():  # type: () -> Dict[str, Any]
     """
     Parse and process command-line arguments
 
-    CLI
+    CLI > DEFAULTS
     """
     script_name = os.path.split(sys.argv[0])[-1]
     description = __doc__
@@ -1171,17 +1171,14 @@ def parse_args():  # type: () -> Dict[str, Any]
     parser.add_argument(
         '-a',
         '--host-address',
-        default=os.environ.get('KODI_HOST_ADDRESS', 'http://127.0.0.1'),
     )
     parser.add_argument(
         '-p',
         '--host-port',
-        default=os.environ.get('KODI_HOST_PORT', '80'),
     )
     parser.add_argument(
         '-P',
         '--host-path',
-        default=os.environ.get('KODI_HOST_PATH', 'jsonrpc'),
     )
     parser.add_argument(
         '-u',
@@ -1194,43 +1191,45 @@ def parse_args():  # type: () -> Dict[str, Any]
     parser.add_argument(
         '-n',
         '--noop',
-        default=True,
         action='store_true',
+        default=None,
     )
     parser.add_argument(
         '-N',
         '--no-noop',
         action='store_false',
+        default=None,
         dest='noop',
     )
     parser.add_argument(
         '-l',
         '--local-update',
-        default=True,
         action='store_true',
+        default=None,
     )
     parser.add_argument(
         '-L',
         '--no-local-update',
         action='store_false',
+        default=None,
         dest='local_update',
     )
     parser.add_argument(
         '-r',
         '--remote-update',
-        default=True,
         action='store_true',
+        default=None,
     )
     parser.add_argument(
         '-R',
         '--no-remote-update',
         action='store_false',
+        default=None,
         dest='remote_update',
     )
     parser.add_argument(
         '-t',
         '--type',
-        default='film',
         choices=(
             'film',
             'show',
@@ -1239,13 +1238,24 @@ def parse_args():  # type: () -> Dict[str, Any]
     parser.add_argument(
         'paths',
         nargs='*',
-        default=('.',),
     )
     args = parser.parse_args()
     logger.debug('args: %s', args)
     cli_settings = vars(args)
+    default_settings = {
+        'host_address': 'http://127.0.0.1',
+        'host_port': 80,
+        'host_path': 'jsonrpc',
+        'noop': True,
+        'local_update': True,
+        'remote_update': True,
+        'type': 'film',
+        'paths': ('.',),
+    }
     join_settings = {
-        key: value
+        key: value if value is not None else (
+            default_settings.get(key)
+        )
         for key, value in cli_settings.items()
     }
     return join_settings
