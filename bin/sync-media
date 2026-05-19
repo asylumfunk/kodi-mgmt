@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 # pylint: disable=invalid-name
+# pylint: disable=too-many-lines
 """
 Synchronise movie metadata between .nfo files and the Kodi API
 """
+from __future__ import print_function
+
 from abc import ABCMeta
 import argparse
 import base64
@@ -10,6 +13,7 @@ from copy import deepcopy
 from datetime import datetime
 from datetime import timedelta
 import json
+import logging
 import os
 import sys
 import xml.etree.ElementTree as ET
@@ -18,6 +22,49 @@ import xml.etree.ElementTree as ET
 # to support py2 in older Kodi versions (<19)
 # since v18 was the last to support MPEG2/VC1 hardware-acceleration on
 # Raspberry Pi v3 boards.
+# pylint: disable=ungrouped-imports
+try:
+    from datetime import timezone  # type: ignore
+    TZ_UTC = timezone.utc
+    # In PY3 we can use local timezones,
+    # since it has proper TZ support.
+    TZ_LOCAL = None
+except ImportError:
+    from datetime import tzinfo
+
+    class Utc(tzinfo):
+        """
+        Implement base class for PY2
+        """
+        # pylint: disable=protected-access
+        # pylint: disable=unused-argument
+        _offset = timedelta(seconds=0)
+        _dst = timedelta(0)
+        _name = 'UTC'
+        def utcoffset(self, dt):  # type: (Optional[datetime]) -> Optional[timedelta]
+            """
+            Barebones UTC implementation
+            """
+            return self.__class__._offset
+
+        def dst(self, dt):  # type: (Optional[datetime]) -> Optional[timedelta]
+            """
+            Barebones UTC implementation
+            """
+            return self.__class__._dst
+
+        def tzname(self, dt):  # type: (Optional[datetime]) -> str
+            """
+            Barebones UTC implementation
+            """
+            return self.__class__._name
+
+
+    TZ_UTC = Utc()  # type: ignore
+    # In PY2 we just use UTC everywhere
+    # since it assumes TZ-naive datetimes.
+    TZ_LOCAL = TZ_UTC  # type: ignore
+# pylint: enable=ungrouped-imports
 try:
     from urllib.request import urlopen  # type: ignore
     from urllib.request import Request  # type: ignore
@@ -28,6 +75,9 @@ try:
     from typing import Any, Dict, Iterable, List, Optional, Type
 except ImportError:
     pass
+
+
+logger = logging.getLogger(__name__)
 
 
 def parse_types(data):  # type: (dict) -> dict
@@ -185,11 +235,32 @@ class KodiApi:
             'Cache-Control': 'no-cache',
             'Content-Type': 'application/json',
         }  # type: Dict[str, Any]
+        self.username = username
         if username:
             password = password or ''
             credentials = bytes((':'.join([username, password])).encode('utf-8'))
             authorization = 'Basic ' + base64.b64encode(credentials).decode('utf-8')
             self._headers['Authorization'] = authorization
+
+    def __str__(self):  # type: () -> str
+        string = "{username}{host}:{port}/{path}".format(
+            host=self.host,
+            port=self.port,
+            path=self.path,
+            username=self.username + '@' if self.username else '',
+        )
+        return string
+
+    def __repr__(self):  # type: () -> str
+        cls = type(self).__name__
+        string = "{cls}(host='{host}', port={port}, path='{path}', username='{username}')".format(
+            cls=cls,
+            host=self.host,
+            port=self.port,
+            path=self.path,
+            username=self.username or '',
+        )
+        return string
 
     def call(self, data):  # type: (dict) -> Dict[str, Any]
         """
@@ -298,13 +369,24 @@ class NfoLibrary:
         """
         Access all of the linked media objects in the library
         """
+        cls_name = type(self).__name__
+        root_name = '.../' + '/'.join(self.root.split('/')[-3:])
+        logger.debug("cls='%s' root='%s'", cls_name, root_name)
+        count = 0
         for nfo in self.get_nfos():
             item = self.item_class.from_nfo(nfo)
             if item:
+                count += 1
                 yield item
             else:
-                print("NO ITEM HERE", nfo)
-                print('*' * 20)
+                nfo_name = '.../' + '/'.join(nfo.split('/')[-3:])
+                print("Unable to parse NFO", nfo_name, sep='; ', file=sys.stderr)
+        logger.debug(
+            "cls='%s' count=%d root='%s'",
+            cls_name,
+            count,
+            root_name,
+        )
 
 
 class MovieNfoLibrary(NfoLibrary):
@@ -465,7 +547,8 @@ class Media:
             types[key]['keys'].extend(value['keys'])
         return types
 
-    def __init__(self, data, nfo=None, api_id=None):  # type: (dict, Optional[str], Optional[int]) -> None
+    def __init__(self, data, nfo=None, api_id=None):
+        # type: (dict, Optional[str], Optional[int]) -> None
         self.data = data
         self.nfo = nfo or ''
         self.api_id = api_id  # type: Optional[int]
@@ -503,24 +586,27 @@ class Media:
         """
         Parse an nfo file into a Media object
         """
+        logger.debug("nfo: %s", nfo)
         try:
             tree = ET.parse(nfo)
         except ET.ParseError as error:
             if error.msg.startswith('junk after document element:'):
-                print("MULTI EPISODE FOUND", nfo)
+                logger.warning("MULTI EPISODE FOUND: %s", nfo)
                 return None
             if error.msg.startswith('syntax error:'):
-                print("SYNTAX ERROR FOUND", nfo)
+                logger.error("SYNTAX ERROR FOUND: '%s'; %s", error.msg, nfo)
                 return None
-            print("NEW ERROR FOUND", error.msg, nfo)
+            logger.exception("NEW ERROR FOUND: %s: %s", error.msg, nfo)
             return None
         root_node = cls._get_root_node(tree)
         if root_node is None:
+            logger.error("NFO missing root node, %s: %s", cls.ROOT_NODE_TAG_NAME, tree)
             return None
         data = {}  # type: Dict[str, Any]
         cls._from_nfo_types(data, root_node)
         cls._from_nfo_list(data, root_node)
         film = cls(data, nfo=nfo)
+        logger.debug('film: %s', film)
         return film
 
     @classmethod
@@ -575,15 +661,28 @@ class Media:
             result = api.call(payload)
             medias = result.get(cls.API_METHOD_GET_RESULT_KEY, [])
             if len(medias) < 1:
-                print("NONE FOUND", media.data['title'], media.data.get('year'), media.nfo)
-                print('*' * 20)
+                logger.warning(
+                    "NONE FOUND: %s; %s; %s",
+                    media.data['title'],
+                    media.data.get('year'),
+                    media.nfo,
+                )
             elif len(medias) > 1:
-                print("TOO MANY FOUND", media.data['title'], media.data.get('year'), media.nfo)
+                logger.warning(
+                    "TOO MANY FOUND, local: %s; %s; %s",
+                    media.data['title'],
+                    media.data.get('year'),
+                    media.nfo,
+                )
                 for _media in medias:
-                    print(_media)
-                print('*' * 20)
+                    logger.warning("TOO MANY FOUND, remote: %s", _media)
             else:
-                print("MATCH FOUND", media.data['title'], media.data.get('year'), media.nfo)
+                logger.debug(
+                    "MATCH FOUND: %s; %s; %s",
+                    media.data['title'],
+                    media.data.get('year'),
+                    media.nfo,
+                )
                 data = medias[0]
                 data = parse_types(data)
                 api_id = data[cls.ID_KEY]
@@ -689,11 +788,12 @@ class Media:
                 'playcount',
             )
         }
-        if api_changes or nfo_changes:
-            print(type(self).__name__.upper() + ':     ', local.data['title'])
-        self.to_api(api, remote, api_changes, dry_run)
-        self.to_nfo(self.nfo, local, nfo_changes, dry_run)
-        if api_changes or nfo_changes:
+        result = False
+        result = self.to_api(api, remote, api_changes, dry_run) or result
+        result = self.to_nfo(self.nfo, local, nfo_changes, dry_run) or result
+        if result:
+            logger.info("Synced: %s", self.nfo)
+            print(self.nfo)
             print('*' * 20)
         for child in self.children:
             child.sync(
@@ -712,7 +812,13 @@ class Media:
         if not changes:
             return False
         print('API TO:   ', changes)
+        logger.info('API TO: %s', changes)
         print('API FROM: ', {
+            key: value
+            for key, value in remote.data.items()
+            if key in changes
+        }, file=sys.stderr)
+        logger.debug('API FROM: %s', {
             key: value
             for key, value in remote.data.items()
             if key in changes
@@ -725,21 +831,28 @@ class Media:
         }  # type: Dict[str, Any]
         for key, value in changes.items():
             payload['params'][key] = value
-        print("PAYLOAD", payload)
-        result = None
+        logger.debug('PAYLOAD: %s', payload)
+        status = True
         if not dry_run:
             result = api.call(payload)
-        return bool(result)
+            status = bool(result)
+        return status
 
     def to_nfo(self, nfo, local, changes, dry_run):
-        # type: (str, Media, dict, bool) -> None
+        # type: (str, Media, dict, bool) -> bool
         """
         Send updates to the nfo file
         """
         if not changes:
-            return
+            return False
         print('NFO TO:   ', changes)
+        logger.info('NFO TO: %s', changes)
         print('NFO FROM: ', {
+            key: value
+            for key, value in local.data.items()
+            if key in changes
+        }, file=sys.stderr)
+        logger.debug('NFO FROM: %s', {
             key: value
             for key, value in local.data.items()
             if key in changes
@@ -747,7 +860,7 @@ class Media:
         tree = ET.parse(nfo)
         root_node = self._get_root_node(tree)
         if root_node is None:
-            return
+            return False
         root = tree.getroot()
         if self.SHOULD_TOUCH_HISTORY_NODE:
             add_to_history(root_node)
@@ -756,7 +869,7 @@ class Media:
             if len(node) > 0:
                 tag = node[0]
             else:
-                print("Adding Missing Tag: ", key)
+                logger.debug("Adding missing tag to NFO: %s", key)
                 tag = ET.SubElement(root_node, key)
             tag.text = str(changes[key])
             # tag.attrib['foo'] = 'bar'
@@ -771,6 +884,7 @@ class Media:
             with open(nfo, 'wb') as nfo_out:
                 nfo_out.write(b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
                 tree.write(nfo_out, xml_declaration=False, encoding='utf-8')
+        return True
 
     @property
     def children(self):  # type: () -> Iterable[Media]
@@ -953,6 +1067,7 @@ def _main_sync(args, cls_library):
         username=args.username,
         password=args.password,
     )
+    logger.debug("api: %s", api)
     for path in args.paths:
         library = cls_library(path)
         for item in library.items():
@@ -965,11 +1080,37 @@ def _main_sync(args, cls_library):
                 )
 
 
+def format_datetime_rfc3339(self, record, datefmt=None):
+    # type: (logging.Formatter, logging.LogRecord, str) -> str
+    """
+    Format a datetime in RFC3339 format
+
+    used for logging, which doesn't support fractional seconds, by default
+    """
+    # pylint: disable=unused-argument
+    timestamp = datetime.fromtimestamp(record.created, tz=TZ_UTC)
+    return (
+        timestamp
+        .astimezone(tz=TZ_LOCAL)  # type: ignore
+        .isoformat()
+    )
+
+
 def main():  # type: () -> None
     """
     Execute the script from the command line
     """
+    # DEBUG INFO WARNING ERROR CRITICAL
+    logging.basicConfig(
+        filename='sync-media.log',
+        # TODO: Add this kwarg conditionally for PY3 only
+        # encoding='utf-8',
+        filemode='a',
+        level=logging.INFO,
+        format="%(asctime)s %(process)07d %(levelname)-8s %(module)s:%(funcName)s %(message)s",
+    )
     args = parse_args()
+    setattr(logging.Formatter, 'formatTime', format_datetime_rfc3339)
     cls_library = None  # type: Optional[Type[NfoLibrary]]
     if args.type == 'film':
         cls_library = MovieNfoLibrary
@@ -1064,6 +1205,7 @@ def parse_args():  # type: () -> argparse.Namespace
         default=('.',),
     )
     args = parser.parse_args()
+    logger.debug('args: %s', args)
     return args
 
 
