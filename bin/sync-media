@@ -97,6 +97,7 @@ APP_NAME = 'kodi-mgmt'
 USER_HOME = os.environ.get('HOME') or os.path.expanduser('~')
 CACHE_HOME_XDG = os.environ.get('XDG_CACHE_HOME') or os.path.join(USER_HOME, '.cache')
 CACHE_HOME_APP = os.path.join(CACHE_HOME_XDG, APP_NAME)
+CACHE_PATH_LOG = os.path.join(CACHE_HOME_APP, 'sync-media.log')
 CONFIG_HOME_XDG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(USER_HOME, '.config')
 CONFIG_HOME_APP = os.path.join(CONFIG_HOME_XDG, APP_NAME)
 
@@ -1136,7 +1137,7 @@ def main():  # type: () -> None
     # DEBUG INFO WARNING ERROR CRITICAL
     _ensure_app_directories_exist()
     logging.basicConfig(
-        filename='sync-media.log',
+        filename=CACHE_PATH_LOG,
         # TODO: Add this kwarg conditionally for PY3 only
         # encoding='utf-8',
         filemode='a',
