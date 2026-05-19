@@ -22,6 +22,49 @@ import xml.etree.ElementTree as ET
 # to support py2 in older Kodi versions (<19)
 # since v18 was the last to support MPEG2/VC1 hardware-acceleration on
 # Raspberry Pi v3 boards.
+# pylint: disable=ungrouped-imports
+try:
+    from datetime import timezone  # type: ignore
+    TZ_UTC = timezone.utc
+    # In PY3 we can use local timezones,
+    # since it has proper TZ support.
+    TZ_LOCAL = None
+except ImportError:
+    from datetime import tzinfo
+
+    class Utc(tzinfo):
+        """
+        Implement base class for PY2
+        """
+        # pylint: disable=protected-access
+        # pylint: disable=unused-argument
+        _offset = timedelta(seconds=0)
+        _dst = timedelta(0)
+        _name = 'UTC'
+        def utcoffset(self, dt):  # type: (Optional[datetime]) -> Optional[timedelta]
+            """
+            Barebones UTC implementation
+            """
+            return self.__class__._offset
+
+        def dst(self, dt):  # type: (Optional[datetime]) -> Optional[timedelta]
+            """
+            Barebones UTC implementation
+            """
+            return self.__class__._dst
+
+        def tzname(self, dt):  # type: (Optional[datetime]) -> str
+            """
+            Barebones UTC implementation
+            """
+            return self.__class__._name
+
+
+    TZ_UTC = Utc()  # type: ignore
+    # In PY2 we just use UTC everywhere
+    # since it assumes TZ-naive datetimes.
+    TZ_LOCAL = TZ_UTC  # type: ignore
+# pylint: enable=ungrouped-imports
 try:
     from urllib.request import urlopen  # type: ignore
     from urllib.request import Request  # type: ignore
@@ -1037,6 +1080,22 @@ def _main_sync(args, cls_library):
                 )
 
 
+def format_datetime_rfc3339(self, record, datefmt=None):
+    # type: (logging.Formatter, logging.LogRecord, str) -> str
+    """
+    Format a datetime in RFC3339 format
+
+    used for logging, which doesn't support fractional seconds, by default
+    """
+    # pylint: disable=unused-argument
+    timestamp = datetime.fromtimestamp(record.created, tz=TZ_UTC)
+    return (
+        timestamp
+        .astimezone(tz=TZ_LOCAL)  # type: ignore
+        .isoformat()
+    )
+
+
 def main():  # type: () -> None
     """
     Execute the script from the command line
@@ -1049,9 +1108,9 @@ def main():  # type: () -> None
         filemode='a',
         level=logging.INFO,
         format="%(asctime)s %(process)07d %(levelname)-8s %(module)s:%(funcName)s %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%SZ",
     )
     args = parse_args()
+    setattr(logging.Formatter, 'formatTime', format_datetime_rfc3339)
     cls_library = None  # type: Optional[Type[NfoLibrary]]
     if args.type == 'film':
         cls_library = MovieNfoLibrary
