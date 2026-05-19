@@ -76,8 +76,29 @@ try:
 except ImportError:
     pass
 
+try:
+    # pylint: disable=used-before-assignment
+    _ = FileExistsError
+except NameError:
+    import errno
+
+    class FileExistsError(OSError):
+        """
+        Polyfill this exception for Python2
+        """
+        # pylint: disable=redefined-builtin
+        def __init__(self, msg):  # type: (str) -> None
+            # pylint: disable=super-with-arguments
+            super(FileExistsError, self).__init__(errno.EEXIST, msg)
+
 
 logger = logging.getLogger(__name__)
+APP_NAME = 'kodi-mgmt'
+USER_HOME = os.environ.get('HOME') or os.path.expanduser('~')
+CACHE_HOME_XDG = os.environ.get('XDG_CACHE_HOME') or os.path.join(USER_HOME, '.cache')
+CACHE_HOME_APP = os.path.join(CACHE_HOME_XDG, APP_NAME)
+CONFIG_HOME_XDG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(USER_HOME, '.config')
+CONFIG_HOME_APP = os.path.join(CONFIG_HOME_XDG, APP_NAME)
 
 
 def parse_types(data):  # type: (dict) -> dict
@@ -1080,6 +1101,18 @@ def _main_sync(args, cls_library):
                 )
 
 
+def _ensure_app_directories_exist():  # type: () -> None
+    """
+    Create necessary application directories
+    """
+    for _dir in (CONFIG_HOME_APP, CACHE_HOME_APP):
+        if not os.path.isdir(_dir):
+            try:
+                os.makedirs(_dir)
+            except FileExistsError:
+                pass
+
+
 def format_datetime_rfc3339(self, record, datefmt=None):
     # type: (logging.Formatter, logging.LogRecord, str) -> str
     """
@@ -1101,6 +1134,7 @@ def main():  # type: () -> None
     Execute the script from the command line
     """
     # DEBUG INFO WARNING ERROR CRITICAL
+    _ensure_app_directories_exist()
     logging.basicConfig(
         filename='sync-media.log',
         # TODO: Add this kwarg conditionally for PY3 only
