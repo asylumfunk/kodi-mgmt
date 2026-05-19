@@ -11,6 +11,7 @@ from copy import deepcopy
 from datetime import datetime
 from datetime import timedelta
 import json
+import logging
 import os
 import sys
 import xml.etree.ElementTree as ET
@@ -29,6 +30,9 @@ try:
     from typing import Any, Dict, Iterable, List, Optional, Type
 except ImportError:
     pass
+
+
+logger = logging.getLogger(__name__)
 
 
 def parse_types(data):  # type: (dict) -> dict
@@ -320,13 +324,24 @@ class NfoLibrary:
         """
         Access all of the linked media objects in the library
         """
+        cls_name = type(self).__name__
+        root_name = '.../' + '/'.join(self.root.split('/')[-3:])
+        logger.debug("cls='%s' root='%s'", cls_name, root_name)
+        count = 0
         for nfo in self.get_nfos():
             item = self.item_class.from_nfo(nfo)
             if item:
+                count += 1
                 yield item
             else:
-                print("NO ITEM HERE", nfo)
-                print('*' * 20)
+                nfo_name = '.../' + '/'.join(nfo.split('/')[-3:])
+                print("Unable to parse NFO", nfo_name, sep='; ', file=sys.stderr)
+        logger.debug(
+            "cls='%s' count=%d root='%s'",
+            cls_name,
+            count,
+            root_name,
+        )
 
 
 class MovieNfoLibrary(NfoLibrary):
@@ -526,24 +541,27 @@ class Media:
         """
         Parse an nfo file into a Media object
         """
+        logger.debug("nfo: %s", nfo)
         try:
             tree = ET.parse(nfo)
         except ET.ParseError as error:
             if error.msg.startswith('junk after document element:'):
-                print("MULTI EPISODE FOUND", nfo)
+                logger.warning("MULTI EPISODE FOUND: %s", nfo)
                 return None
             if error.msg.startswith('syntax error:'):
-                print("SYNTAX ERROR FOUND", nfo)
+                logger.error("SYNTAX ERROR FOUND: '%s'; %s", error.msg, nfo)
                 return None
-            print("NEW ERROR FOUND", error.msg, nfo)
+            logger.exception("NEW ERROR FOUND: %s: %s", error.msg, nfo)
             return None
         root_node = cls._get_root_node(tree)
         if root_node is None:
+            logger.error("NFO missing root node, %s: %s", cls.ROOT_NODE_TAG_NAME, tree)
             return None
         data = {}  # type: Dict[str, Any]
         cls._from_nfo_types(data, root_node)
         cls._from_nfo_list(data, root_node)
         film = cls(data, nfo=nfo)
+        logger.debug('film: %s', film)
         return film
 
     @classmethod
@@ -598,15 +616,28 @@ class Media:
             result = api.call(payload)
             medias = result.get(cls.API_METHOD_GET_RESULT_KEY, [])
             if len(medias) < 1:
-                print("NONE FOUND", media.data['title'], media.data.get('year'), media.nfo)
-                print('*' * 20)
+                logger.warning(
+                    "NONE FOUND: %s; %s; %s",
+                    media.data['title'],
+                    media.data.get('year'),
+                    media.nfo,
+                )
             elif len(medias) > 1:
-                print("TOO MANY FOUND", media.data['title'], media.data.get('year'), media.nfo)
+                logger.warning(
+                    "TOO MANY FOUND, local: %s; %s; %s",
+                    media.data['title'],
+                    media.data.get('year'),
+                    media.nfo,
+                )
                 for _media in medias:
-                    print(_media)
-                print('*' * 20)
+                    logger.warning("TOO MANY FOUND, remote: %s", _media)
             else:
-                print("MATCH FOUND", media.data['title'], media.data.get('year'), media.nfo)
+                logger.debug(
+                    "MATCH FOUND: %s; %s; %s",
+                    media.data['title'],
+                    media.data.get('year'),
+                    media.nfo,
+                )
                 data = medias[0]
                 data = parse_types(data)
                 api_id = data[cls.ID_KEY]
@@ -712,12 +743,12 @@ class Media:
                 'playcount',
             )
         }
-        if api_changes or nfo_changes:
-            print(type(self).__name__.upper() + ':     ', local.data['title'])
         result = False
         result = self.to_api(api, remote, api_changes, dry_run) or result
         result = self.to_nfo(self.nfo, local, nfo_changes, dry_run) or result
-        if api_changes or nfo_changes:
+        if result:
+            logger.info("Synced: %s", self.nfo)
+            print(self.nfo)
             print('*' * 20)
         for child in self.children:
             child.sync(
@@ -736,7 +767,13 @@ class Media:
         if not changes:
             return False
         print('API TO:   ', changes)
+        logger.info('API TO: %s', changes)
         print('API FROM: ', {
+            key: value
+            for key, value in remote.data.items()
+            if key in changes
+        }, file=sys.stderr)
+        logger.debug('API FROM: %s', {
             key: value
             for key, value in remote.data.items()
             if key in changes
@@ -749,7 +786,7 @@ class Media:
         }  # type: Dict[str, Any]
         for key, value in changes.items():
             payload['params'][key] = value
-        print("PAYLOAD", payload)
+        logger.debug('PAYLOAD: %s', payload)
         status = True
         if not dry_run:
             result = api.call(payload)
@@ -764,7 +801,13 @@ class Media:
         if not changes:
             return False
         print('NFO TO:   ', changes)
+        logger.info('NFO TO: %s', changes)
         print('NFO FROM: ', {
+            key: value
+            for key, value in local.data.items()
+            if key in changes
+        }, file=sys.stderr)
+        logger.debug('NFO FROM: %s', {
             key: value
             for key, value in local.data.items()
             if key in changes
@@ -781,7 +824,7 @@ class Media:
             if len(node) > 0:
                 tag = node[0]
             else:
-                print("Adding Missing Tag: ", key)
+                logger.debug("Adding missing tag to NFO: %s", key)
                 tag = ET.SubElement(root_node, key)
             tag.text = str(changes[key])
             # tag.attrib['foo'] = 'bar'
@@ -979,6 +1022,7 @@ def _main_sync(args, cls_library):
         username=args.username,
         password=args.password,
     )
+    logger.debug("api: %s", api)
     for path in args.paths:
         library = cls_library(path)
         for item in library.items():
@@ -995,6 +1039,16 @@ def main():  # type: () -> None
     """
     Execute the script from the command line
     """
+    # DEBUG INFO WARNING ERROR CRITICAL
+    logging.basicConfig(
+        filename='sync-media.log',
+        # TODO: Add this kwarg conditionally for PY3 only
+        # encoding='utf-8',
+        filemode='a',
+        level=logging.INFO,
+        format="%(asctime)s %(process)07d %(levelname)-8s %(module)s:%(funcName)s %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%SZ",
+    )
     args = parse_args()
     cls_library = None  # type: Optional[Type[NfoLibrary]]
     if args.type == 'film':
@@ -1090,6 +1144,7 @@ def parse_args():  # type: () -> argparse.Namespace
         default=('.',),
     )
     args = parser.parse_args()
+    logger.debug('args: %s', args)
     return args
 
 
