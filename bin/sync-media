@@ -100,6 +100,7 @@ CACHE_HOME_APP = os.path.join(CACHE_HOME_XDG, APP_NAME)
 CACHE_PATH_LOG = os.path.join(CACHE_HOME_APP, 'sync-media.log')
 CONFIG_HOME_XDG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(USER_HOME, '.config')
 CONFIG_HOME_APP = os.path.join(CONFIG_HOME_XDG, APP_NAME)
+CONFIG_ENV_PREFIX = 'KODI_MGMT_'  # Changing this value is a breaking change!
 
 
 def parse_types(data):  # type: (dict) -> dict
@@ -1158,9 +1159,9 @@ def main():  # type: () -> None
 
 def parse_args():  # type: () -> Dict[str, Any]
     """
-    Parse and process command-line arguments
+    Parse and process configuration arguments
 
-    CLI > DEFAULTS
+    CLI > ENV > DEFAULTS
     """
     script_name = os.path.split(sys.argv[0])[-1]
     description = __doc__
@@ -1242,6 +1243,11 @@ def parse_args():  # type: () -> Dict[str, Any]
     args = parser.parse_args()
     logger.debug('args: %s', args)
     cli_settings = vars(args)
+    env_settings = {
+        key.lower()[len(CONFIG_ENV_PREFIX):]: value
+        for key, value in os.environ.items()
+        if key.startswith(CONFIG_ENV_PREFIX)
+    }
     default_settings = {
         'host_address': 'http://127.0.0.1',
         'host_port': 80,
@@ -1254,7 +1260,10 @@ def parse_args():  # type: () -> Dict[str, Any]
     }
     join_settings = {
         key: value if value is not None else (
-            default_settings.get(key)
+            env_settings.get(
+                key,
+                default_settings.get(key)
+            )
         )
         for key, value in cli_settings.items()
     }
