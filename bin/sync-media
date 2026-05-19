@@ -4,6 +4,8 @@
 """
 Synchronise movie metadata between .nfo files and the Kodi API
 """
+from __future__ import print_function
+
 from abc import ABCMeta
 import argparse
 import base64
