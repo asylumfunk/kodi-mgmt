@@ -185,6 +185,7 @@ class KodiApi:
             'Cache-Control': 'no-cache',
             'Content-Type': 'application/json',
         }  # type: Dict[str, Any]
+        self.username = username
         if username:
             password = password or ''
             credentials = bytes((':'.join([username, password])).encode('utf-8'))
