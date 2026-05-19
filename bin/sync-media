@@ -714,8 +714,9 @@ class Media:
         }
         if api_changes or nfo_changes:
             print(type(self).__name__.upper() + ':     ', local.data['title'])
-        self.to_api(api, remote, api_changes, dry_run)
-        self.to_nfo(self.nfo, local, nfo_changes, dry_run)
+        result = False
+        result = self.to_api(api, remote, api_changes, dry_run) or result
+        result = self.to_nfo(self.nfo, local, nfo_changes, dry_run) or result
         if api_changes or nfo_changes:
             print('*' * 20)
         for child in self.children:
@@ -749,18 +750,19 @@ class Media:
         for key, value in changes.items():
             payload['params'][key] = value
         print("PAYLOAD", payload)
-        result = None
+        status = True
         if not dry_run:
             result = api.call(payload)
-        return bool(result)
+            status = bool(result)
+        return status
 
     def to_nfo(self, nfo, local, changes, dry_run):
-        # type: (str, Media, dict, bool) -> None
+        # type: (str, Media, dict, bool) -> bool
         """
         Send updates to the nfo file
         """
         if not changes:
-            return
+            return False
         print('NFO TO:   ', changes)
         print('NFO FROM: ', {
             key: value
@@ -770,7 +772,7 @@ class Media:
         tree = ET.parse(nfo)
         root_node = self._get_root_node(tree)
         if root_node is None:
-            return
+            return False
         root = tree.getroot()
         if self.SHOULD_TOUCH_HISTORY_NODE:
             add_to_history(root_node)
@@ -794,6 +796,7 @@ class Media:
             with open(nfo, 'wb') as nfo_out:
                 nfo_out.write(b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
                 tree.write(nfo_out, xml_declaration=False, encoding='utf-8')
+        return True
 
     @property
     def children(self):  # type: () -> Iterable[Media]
