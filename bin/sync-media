@@ -1081,24 +1081,24 @@ class Film(Media):
 
 
 def _main_sync(args, cls_library):
-    # type: (argparse.Namespace, Type[NfoLibrary]) -> None
+    # type: (Dict[str, Any], Type[NfoLibrary]) -> None
     api = KodiApi(
-        args.host_address,
-        args.host_port,
-        args.host_path,
-        username=args.username,
-        password=args.password,
+        args['host_address'],
+        args['host_port'],
+        args['host_path'],
+        username=args['username'],
+        password=args['password'],
     )
     logger.debug("api: %s", api)
-    for path in args.paths:
+    for path in args['paths']:
         library = cls_library(path)
         for item in library.items():
             if item:
                 item.sync(
                     api,
-                    local_update=args.local_update,
-                    remote_update=args.remote_update,
-                    dry_run=args.noop,
+                    local_update=args['local_update'],
+                    remote_update=args['remote_update'],
+                    dry_run=args['noop'],
                 )
 
 
@@ -1147,18 +1147,20 @@ def main():  # type: () -> None
     args = parse_args()
     setattr(logging.Formatter, 'formatTime', format_datetime_rfc3339)
     cls_library = None  # type: Optional[Type[NfoLibrary]]
-    if args.type == 'film':
+    if args['type'] == 'film':
         cls_library = MovieNfoLibrary
-    elif args.type == 'show':
+    elif args['type'] == 'show':
         cls_library = ShowNfoLibrary
     else:
-        raise NotImplementedError(args.type)
+        raise NotImplementedError(args['type'])
     _main_sync(args, cls_library)
 
 
-def parse_args():  # type: () -> argparse.Namespace
+def parse_args():  # type: () -> Dict[str, Any]
     """
     Parse and process command-line arguments
+
+    CLI
     """
     script_name = os.path.split(sys.argv[0])[-1]
     description = __doc__
@@ -1241,7 +1243,12 @@ def parse_args():  # type: () -> argparse.Namespace
     )
     args = parser.parse_args()
     logger.debug('args: %s', args)
-    return args
+    cli_settings = vars(args)
+    join_settings = {
+        key: value
+        for key, value in cli_settings.items()
+    }
+    return join_settings
 
 
 if __name__ == '__main__':
