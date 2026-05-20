@@ -12,6 +12,7 @@ import base64
 from copy import deepcopy
 from datetime import datetime
 from datetime import timedelta
+from io import open
 import json
 import logging
 import os
@@ -76,8 +77,32 @@ try:
 except ImportError:
     pass
 
+try:
+    # pylint: disable=used-before-assignment
+    _ = FileExistsError
+except NameError:
+    import errno
+
+    class FileExistsError(OSError):
+        """
+        Polyfill this exception for Python2
+        """
+        # pylint: disable=redefined-builtin
+        def __init__(self, msg):  # type: (str) -> None
+            # pylint: disable=super-with-arguments
+            super(FileExistsError, self).__init__(errno.EEXIST, msg)
+
 
 logger = logging.getLogger(__name__)
+APP_NAME = 'kodi-mgmt'
+USER_HOME = os.environ.get('HOME') or os.path.expanduser('~')
+CACHE_HOME_XDG = os.environ.get('XDG_CACHE_HOME') or os.path.join(USER_HOME, '.cache')
+CACHE_HOME_APP = os.path.join(CACHE_HOME_XDG, APP_NAME)
+CACHE_PATH_LOG = os.path.join(CACHE_HOME_APP, 'sync-media.log')
+CONFIG_HOME_XDG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(USER_HOME, '.config')
+CONFIG_HOME_APP = os.path.join(CONFIG_HOME_XDG, APP_NAME)
+CONFIG_PATH_JSON = os.path.join(CONFIG_HOME_APP, 'config.json')
+CONFIG_ENV_PREFIX = 'KODI_MGMT_'  # Changing this value is a breaking change!
 
 
 def parse_types(data):  # type: (dict) -> dict
@@ -1059,25 +1084,37 @@ class Film(Media):
 
 
 def _main_sync(args, cls_library):
-    # type: (argparse.Namespace, Type[NfoLibrary]) -> None
+    # type: (Dict[str, Any], Type[NfoLibrary]) -> None
     api = KodiApi(
-        args.host_address,
-        args.host_port,
-        args.host_path,
-        username=args.username,
-        password=args.password,
+        args['host_address'],
+        args['host_port'],
+        args['host_path'],
+        username=args['username'],
+        password=args['password'],
     )
     logger.debug("api: %s", api)
-    for path in args.paths:
+    for path in args['paths']:
         library = cls_library(path)
         for item in library.items():
             if item:
                 item.sync(
                     api,
-                    local_update=args.local_update,
-                    remote_update=args.remote_update,
-                    dry_run=args.noop,
+                    local_update=args['local_update'],
+                    remote_update=args['remote_update'],
+                    dry_run=args['noop'],
                 )
+
+
+def _ensure_app_directories_exist():  # type: () -> None
+    """
+    Create necessary application directories
+    """
+    for _dir in (CONFIG_HOME_APP, CACHE_HOME_APP):
+        if not os.path.isdir(_dir):
+            try:
+                os.makedirs(_dir)
+            except FileExistsError:
+                pass
 
 
 def format_datetime_rfc3339(self, record, datefmt=None):
@@ -1101,29 +1138,33 @@ def main():  # type: () -> None
     Execute the script from the command line
     """
     # DEBUG INFO WARNING ERROR CRITICAL
+    _ensure_app_directories_exist()
+    args = parse_args()
     logging.basicConfig(
-        filename='sync-media.log',
+        filename=CACHE_PATH_LOG,
         # TODO: Add this kwarg conditionally for PY3 only
         # encoding='utf-8',
         filemode='a',
         level=logging.INFO,
         format="%(asctime)s %(process)07d %(levelname)-8s %(module)s:%(funcName)s %(message)s",
     )
-    args = parse_args()
     setattr(logging.Formatter, 'formatTime', format_datetime_rfc3339)
+    logger.debug("Loaded config: %s", args)
     cls_library = None  # type: Optional[Type[NfoLibrary]]
-    if args.type == 'film':
+    if args['type'] == 'film':
         cls_library = MovieNfoLibrary
-    elif args.type == 'show':
+    elif args['type'] == 'show':
         cls_library = ShowNfoLibrary
     else:
-        raise NotImplementedError(args.type)
+        raise NotImplementedError(args['type'])
     _main_sync(args, cls_library)
 
 
-def parse_args():  # type: () -> argparse.Namespace
+def parse_args():  # type: () -> Dict[str, Any]
     """
-    Parse and process command-line arguments
+    Parse and process configuration arguments
+
+    CLI > ENV > JSON > DEFAULTS
     """
     script_name = os.path.split(sys.argv[0])[-1]
     description = __doc__
@@ -1132,19 +1173,21 @@ def parse_args():  # type: () -> argparse.Namespace
         description=description,
     )
     parser.add_argument(
+        '-c',
+        '--config',
+        help='Path to JSON config file',
+    )
+    parser.add_argument(
         '-a',
         '--host-address',
-        default=os.environ.get('KODI_HOST_ADDRESS', 'http://127.0.0.1'),
     )
     parser.add_argument(
         '-p',
         '--host-port',
-        default=os.environ.get('KODI_HOST_PORT', '80'),
     )
     parser.add_argument(
         '-P',
         '--host-path',
-        default=os.environ.get('KODI_HOST_PATH', 'jsonrpc'),
     )
     parser.add_argument(
         '-u',
@@ -1157,43 +1200,45 @@ def parse_args():  # type: () -> argparse.Namespace
     parser.add_argument(
         '-n',
         '--noop',
-        default=True,
         action='store_true',
+        default=None,
     )
     parser.add_argument(
         '-N',
         '--no-noop',
         action='store_false',
+        default=None,
         dest='noop',
     )
     parser.add_argument(
         '-l',
         '--local-update',
-        default=True,
         action='store_true',
+        default=None,
     )
     parser.add_argument(
         '-L',
         '--no-local-update',
         action='store_false',
+        default=None,
         dest='local_update',
     )
     parser.add_argument(
         '-r',
         '--remote-update',
-        default=True,
         action='store_true',
+        default=None,
     )
     parser.add_argument(
         '-R',
         '--no-remote-update',
         action='store_false',
+        default=None,
         dest='remote_update',
     )
     parser.add_argument(
         '-t',
         '--type',
-        default='film',
         choices=(
             'film',
             'show',
@@ -1202,11 +1247,45 @@ def parse_args():  # type: () -> argparse.Namespace
     parser.add_argument(
         'paths',
         nargs='*',
-        default=('.',),
     )
     args = parser.parse_args()
-    logger.debug('args: %s', args)
-    return args
+    cli_settings = vars(args)
+    env_settings = {
+        key.lower()[len(CONFIG_ENV_PREFIX):]: value
+        for key, value in os.environ.items()
+        if key.startswith(CONFIG_ENV_PREFIX)
+    }
+    default_settings = {
+        'config': CONFIG_PATH_JSON,
+        'host_address': 'http://127.0.0.1',
+        'host_port': 80,
+        'host_path': 'jsonrpc',
+        'noop': True,
+        'local_update': True,
+        'remote_update': True,
+        'type': 'film',
+        'paths': ('.',),
+    }
+    config_path = str(
+        cli_settings['config']
+        or env_settings.get('config')
+        or default_settings['config']
+    )
+    with open(config_path, 'r', encoding='utf-8') as config_file:
+        json_settings = json.load(config_file)
+    join_settings = {
+        key: value if value is not None else (
+            env_settings.get(
+                key,
+                json_settings.get(
+                    key,
+                    default_settings.get(key)
+                )
+            )
+        )
+        for key, value in cli_settings.items()
+    }
+    return join_settings
 
 
 if __name__ == '__main__':
