@@ -12,6 +12,7 @@ import base64
 from copy import deepcopy
 from datetime import datetime
 from datetime import timedelta
+from io import open
 import json
 import logging
 import os
@@ -100,6 +101,7 @@ CACHE_HOME_APP = os.path.join(CACHE_HOME_XDG, APP_NAME)
 CACHE_PATH_LOG = os.path.join(CACHE_HOME_APP, 'sync-media.log')
 CONFIG_HOME_XDG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(USER_HOME, '.config')
 CONFIG_HOME_APP = os.path.join(CONFIG_HOME_XDG, APP_NAME)
+CONFIG_PATH_JSON = os.path.join(CONFIG_HOME_APP, 'config.json')
 CONFIG_ENV_PREFIX = 'KODI_MGMT_'  # Changing this value is a breaking change!
 
 
@@ -1161,13 +1163,18 @@ def parse_args():  # type: () -> Dict[str, Any]
     """
     Parse and process configuration arguments
 
-    CLI > ENV > DEFAULTS
+    CLI > ENV > JSON > DEFAULTS
     """
     script_name = os.path.split(sys.argv[0])[-1]
     description = __doc__
     parser = argparse.ArgumentParser(
         prog=script_name,
         description=description,
+    )
+    parser.add_argument(
+        '-c',
+        '--config',
+        help='Path to JSON config file',
     )
     parser.add_argument(
         '-a',
@@ -1249,6 +1256,7 @@ def parse_args():  # type: () -> Dict[str, Any]
         if key.startswith(CONFIG_ENV_PREFIX)
     }
     default_settings = {
+        'config': CONFIG_PATH_JSON,
         'host_address': 'http://127.0.0.1',
         'host_port': 80,
         'host_path': 'jsonrpc',
@@ -1258,11 +1266,21 @@ def parse_args():  # type: () -> Dict[str, Any]
         'type': 'film',
         'paths': ('.',),
     }
+    config_path = str(
+        cli_settings['config']
+        or env_settings.get('config')
+        or default_settings['config']
+    )
+    with open(config_path, 'r', encoding='utf-8') as config_file:
+        json_settings = json.load(config_file)
     join_settings = {
         key: value if value is not None else (
             env_settings.get(
                 key,
-                default_settings.get(key)
+                json_settings.get(
+                    key,
+                    default_settings.get(key)
+                )
             )
         )
         for key, value in cli_settings.items()
