@@ -1139,6 +1139,7 @@ def main():  # type: () -> None
     """
     # DEBUG INFO WARNING ERROR CRITICAL
     _ensure_app_directories_exist()
+    args = parse_args()
     logging.basicConfig(
         filename=CACHE_PATH_LOG,
         # TODO: Add this kwarg conditionally for PY3 only
@@ -1147,8 +1148,8 @@ def main():  # type: () -> None
         level=logging.INFO,
         format="%(asctime)s %(process)07d %(levelname)-8s %(module)s:%(funcName)s %(message)s",
     )
-    args = parse_args()
     setattr(logging.Formatter, 'formatTime', format_datetime_rfc3339)
+    logger.debug("Loaded config: %s", args)
     cls_library = None  # type: Optional[Type[NfoLibrary]]
     if args['type'] == 'film':
         cls_library = MovieNfoLibrary
@@ -1248,7 +1249,6 @@ def parse_args():  # type: () -> Dict[str, Any]
         nargs='*',
     )
     args = parser.parse_args()
-    logger.debug('args: %s', args)
     cli_settings = vars(args)
     env_settings = {
         key.lower()[len(CONFIG_ENV_PREFIX):]: value
