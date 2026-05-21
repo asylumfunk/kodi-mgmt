@@ -898,8 +898,8 @@ class Media:
                 tag = ET.SubElement(root_node, key)
             tag.text = str(changes[key])
             # tag.attrib['foo'] = 'bar'
-        lastplayed_nodes = root_node.findall('./lastplayed')
         if self.SHOULD_TOUCH_HISTORY_NODE:
+            lastplayed_nodes = root_node.findall('./lastplayed')
             if len(lastplayed_nodes) > 0:
                 lastplayed_node = lastplayed_nodes[0]
                 add_to_history(root_node, lastplayed_node.text)
