@@ -199,7 +199,7 @@ def add_to_history(root_node, lastplayed_text=None):  # type: (ET.Element, Optio
             lastplayed_node = lastplayed_nodes[0]
             lastplayed_text = lastplayed_node.text
     history_node = init_history_node(root_node)
-    lastplayed_nodes = root_node.findall('./lastplayed')
+    lastplayed_nodes = root_node.findall('./history/lastplayed')
     if lastplayed_text == '' or (lastplayed_text and lastplayed_text not in (
             _.text for _ in lastplayed_nodes
     )):
