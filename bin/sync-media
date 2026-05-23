@@ -866,12 +866,12 @@ class Media:
             status = bool(result)
         return status
 
-    def to_nfo(self, changes, dry_run):
-        # type: (dict, bool) -> bool
+    def to_nfo(self, changes, dry_run, force=False):
+        # type: (dict, bool, Optional[bool]) -> bool
         """
         Send updates to the nfo file
         """
-        if not changes:
+        if not changes and not force:
             return False
         print('NFO TO:   ', changes)
         logger.info('NFO TO: %s', changes)
