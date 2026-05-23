@@ -1199,26 +1199,6 @@ def parse_args():  # type: () -> Dict[str, Any]
         help='Path to JSON config file',
     )
     parser.add_argument(
-        '-a',
-        '--host-address',
-    )
-    parser.add_argument(
-        '-p',
-        '--host-port',
-    )
-    parser.add_argument(
-        '-P',
-        '--host-path',
-    )
-    parser.add_argument(
-        '-u',
-        '--username',
-    )
-    parser.add_argument(
-        '-w',
-        '--password',
-    )
-    parser.add_argument(
         '-n',
         '--noop',
         action='store_true',
@@ -1232,32 +1212,6 @@ def parse_args():  # type: () -> Dict[str, Any]
         dest='noop',
     )
     parser.add_argument(
-        '-l',
-        '--local-update',
-        action='store_true',
-        default=None,
-    )
-    parser.add_argument(
-        '-L',
-        '--no-local-update',
-        action='store_false',
-        default=None,
-        dest='local_update',
-    )
-    parser.add_argument(
-        '-r',
-        '--remote-update',
-        action='store_true',
-        default=None,
-    )
-    parser.add_argument(
-        '-R',
-        '--no-remote-update',
-        action='store_false',
-        default=None,
-        dest='remote_update',
-    )
-    parser.add_argument(
         '-t',
         '--type',
         choices=(
@@ -1265,10 +1219,60 @@ def parse_args():  # type: () -> Dict[str, Any]
             'show',
         ),
     )
-    parser.add_argument(
-        'paths',
-        nargs='*',
+    subparsers = parser.add_subparsers(dest='subcommand')
+    parser_sync_media = subparsers.add_parser('sync-media')
+    parser_sync_media.add_argument(
+        '-a',
+        '--host-address',
     )
+    parser_sync_media.add_argument(
+        '-p',
+        '--host-port',
+    )
+    parser_sync_media.add_argument(
+        '-P',
+        '--host-path',
+    )
+    parser_sync_media.add_argument(
+        '-u',
+        '--username',
+    )
+    parser_sync_media.add_argument(
+        '-w',
+        '--password',
+    )
+    parser_sync_media.add_argument(
+        '-l',
+        '--local-update',
+        action='store_true',
+        default=None,
+    )
+    parser_sync_media.add_argument(
+        '-L',
+        '--no-local-update',
+        action='store_false',
+        default=None,
+        dest='local_update',
+    )
+    parser_sync_media.add_argument(
+        '-r',
+        '--remote-update',
+        action='store_true',
+        default=None,
+    )
+    parser_sync_media.add_argument(
+        '-R',
+        '--no-remote-update',
+        action='store_false',
+        default=None,
+        dest='remote_update',
+    )
+    for subparser in (parser_sync_media, ):
+        subparser.add_argument(
+            'paths',
+            nargs='*',
+            default=None,
+        )
     args = parser.parse_args()
     cli_settings = vars(args)
     env_settings = {
@@ -1286,6 +1290,7 @@ def parse_args():  # type: () -> Dict[str, Any]
         'remote_update': True,
         'type': 'film',
         'paths': ('.',),
+        'subcommand': 'sync-media',
     }
     config_path = str(
         cli_settings['config']
