@@ -10,7 +10,13 @@ PYLINT = pylint
 all: test
 
 .PHONY: test
-test:
+test: test-type test-lint
+
+.PHONY: test-type
+test-type:
 	$(MYPY) $(PY_FILES)
 	$(MYPY) --py2 $(PY_FILES)
+
+.PHONY: test-lint
+test-lint:
 	$(PYLINT) $(PY_FILES)
