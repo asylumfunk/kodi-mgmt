@@ -2,4 +2,4 @@
 name = "kodi-mgmt"
 
 [mypy]
-disallow_untyped_defs = True
+disallow_untyped_defs = true
