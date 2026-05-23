@@ -815,7 +815,7 @@ class Media:
         }
         result = False
         result = self.to_api(api, remote, api_changes, dry_run) or result
-        result = self.to_nfo(local, nfo_changes, dry_run) or result
+        result = self.to_nfo(nfo_changes, dry_run) or result
         if result:
             logger.info("Synced: %s", self.nfo)
             print(self.nfo)
@@ -863,8 +863,8 @@ class Media:
             status = bool(result)
         return status
 
-    def to_nfo(self, local, changes, dry_run):
-        # type: (Media, dict, bool) -> bool
+    def to_nfo(self, changes, dry_run):
+        # type: (dict, bool) -> bool
         """
         Send updates to the nfo file
         """
@@ -874,12 +874,12 @@ class Media:
         logger.info('NFO TO: %s', changes)
         print('NFO FROM: ', {
             key: value
-            for key, value in local.data.items()
+            for key, value in self.data.items()
             if key in changes
         }, file=sys.stderr)
         logger.debug('NFO FROM: %s', {
             key: value
-            for key, value in local.data.items()
+            for key, value in self.data.items()
             if key in changes
         })
         tree = ET.parse(self.nfo)
