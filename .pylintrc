@@ -152,6 +152,7 @@ disable=raw-checker-failed,
         useless-suppression,
         deprecated-pragma,
         consider-using-f-string,
+        use-yield-from,
         use-symbolic-message-instead
 
 # Enable the message, report, category or checker with the given id(s). You can
