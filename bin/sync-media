@@ -864,7 +864,7 @@ class Media:
         return status
 
     def to_nfo(self, local, changes, dry_run):
-        # type: (str, Media, dict, bool) -> bool
+        # type: (Media, dict, bool) -> bool
         """
         Send updates to the nfo file
         """
