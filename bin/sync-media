@@ -906,7 +906,7 @@ class Media:
             update_playcount_history(root_node)
         indent(root)
         if not dry_run:
-            with open(nfo, 'wb') as nfo_out:
+            with open(self.nfo, 'wb') as nfo_out:
                 nfo_out.write(b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
                 tree.write(nfo_out, xml_declaration=False, encoding='utf-8')
         return True
