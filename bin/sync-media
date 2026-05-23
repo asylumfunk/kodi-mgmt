@@ -889,7 +889,6 @@ class Media:
         root_node = self._get_root_node(tree)
         if root_node is None:
             return False
-        root = tree.getroot()
         if self.SHOULD_TOUCH_HISTORY_NODE:
             add_to_history(root_node)
         for key in changes.keys():
@@ -907,8 +906,16 @@ class Media:
                 lastplayed_node = lastplayed_nodes[0]
                 add_to_history(root_node, lastplayed_node.text)
             update_playcount_history(root_node)
-        indent(root)
+        result = self.save_nfo(tree, dry_run)
+        return result
+
+    def save_nfo(self, tree, dry_run):  # type: (ET.ElementTree, bool) -> bool
+        """
+        Save an NFO to disk
+        """
         if not dry_run:
+            root = tree.getroot()
+            indent(root)
             with open(self.nfo, 'wb') as nfo_out:
                 nfo_out.write(b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
                 tree.write(nfo_out, xml_declaration=False, encoding='utf-8')
