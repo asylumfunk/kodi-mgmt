@@ -1099,8 +1099,9 @@ class Film(Media):
     }  # type: Dict[str, Dict[str, Any]]
 
 
-def _main_sync(args, cls_library):
-    # type: (Dict[str, Any], Type[NfoLibrary]) -> None
+def _main_sync(args):
+    # type: (Dict[str, Any]) -> None
+    cls_library = _get_library_class(args)
     api = KodiApi(
         args['host_address'],
         args['host_port'],
@@ -1149,6 +1150,17 @@ def format_datetime_rfc3339(self, record, datefmt=None):
     )
 
 
+def _get_library_class(args):  # type: (Dict[str, Any]) -> Type[NfoLibrary]
+    cls = None  # type: Optional[Type[NfoLibrary]]
+    if args['type'] == 'film':
+        cls = MovieNfoLibrary
+    elif args['type'] == 'show':
+        cls = ShowNfoLibrary
+    else:
+        raise NotImplementedError(args['type'])
+    return cls
+
+
 def main():  # type: () -> None
     """
     Execute the script from the command line
@@ -1166,14 +1178,7 @@ def main():  # type: () -> None
     )
     setattr(logging.Formatter, 'formatTime', format_datetime_rfc3339)
     logger.debug("Loaded config: %s", args)
-    cls_library = None  # type: Optional[Type[NfoLibrary]]
-    if args['type'] == 'film':
-        cls_library = MovieNfoLibrary
-    elif args['type'] == 'show':
-        cls_library = ShowNfoLibrary
-    else:
-        raise NotImplementedError(args['type'])
-    _main_sync(args, cls_library)
+    _main_sync(args)
 
 
 def parse_args():  # type: () -> Dict[str, Any]
