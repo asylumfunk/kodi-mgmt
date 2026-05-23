@@ -918,7 +918,13 @@ class Media:
             indent(root)
             with open(self.nfo, 'wb') as nfo_out:
                 nfo_out.write(b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
-                tree.write(nfo_out, xml_declaration=False, encoding='utf-8')
+                kwargs = {'short_empty_elements': False} if sys.version_info[0] == 3 else {}
+                tree.write(
+                    nfo_out,
+                    xml_declaration=False,
+                    encoding='utf-8',
+                    **kwargs  # type: ignore
+                )
         return True
 
     @property
