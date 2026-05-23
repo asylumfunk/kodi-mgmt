@@ -355,7 +355,7 @@ class NfoLibrary:
         )
         return _possible_nfos
 
-    def get_nfos(self, top=None):  # type: (str) -> Iterable[str]
+    def get_nfos(self, top=None):  # type: (Optional[str]) -> Iterable[str]
         """
         Find all nfo metadata files within the library root
         """
@@ -459,7 +459,7 @@ class EpisodeNfoLibrary(NfoLibrary):
         """
         return Episode
 
-    def get_nfos(self, top=None):  # type: (str) -> Iterable[str]
+    def get_nfos(self, top=None):  # type: (Optional[str]) -> Iterable[str]
         """
         Find all nfo metadata files within the show root
         """
@@ -1118,7 +1118,7 @@ def _ensure_app_directories_exist():  # type: () -> None
 
 
 def format_datetime_rfc3339(self, record, datefmt=None):
-    # type: (logging.Formatter, logging.LogRecord, str) -> str
+    # type: (logging.Formatter, logging.LogRecord, Optional[str]) -> str
     """
     Format a datetime in RFC3339 format
 
