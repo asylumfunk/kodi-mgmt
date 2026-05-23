@@ -715,8 +715,9 @@ class Media:
             return media
         return None
 
-    def _sync_dateadded(self, local, remote, nfo_changes, api_changes):
-        # type: (Media, Media, dict, dict) -> None
+    def _sync_dateadded(self, remote, nfo_changes, api_changes):
+        # type: (Media, dict, dict) -> None
+        local = self
         if local.data['dateadded'] and remote.data['dateadded']:
             # both sides have _some_ dateadded
             if (local.data['dateadded'] + timedelta(days=1)) < remote.data['dateadded']:
@@ -732,8 +733,9 @@ class Media:
             # only remote side has dateadded, so set it locally
             nfo_changes['dateadded'] = remote.data['dateadded']
 
-    def _sync_lastplayed(self, local, remote, nfo_changes, api_changes):
-        # type: (Media, Media, dict, dict) -> None
+    def _sync_lastplayed(self, remote, nfo_changes, api_changes):
+        # type: (Media, dict, dict) -> None
+        local = self
         if local.data['lastplayed'] and remote.data['lastplayed']:
             # both sides have _some_ lastplayed
             if (local.data['lastplayed'] - timedelta(days=1)) > remote.data['lastplayed']:
@@ -753,8 +755,9 @@ class Media:
             # only remote side has lastplayed, so set local
             nfo_changes['lastplayed'] = remote.data['lastplayed']
 
-    def _sync_playcount(self, local, remote, nfo_changes, api_changes):
-        # type: (Media, Media, dict, dict) -> None
+    def _sync_playcount(self, remote, nfo_changes, api_changes):
+        # type: (Media, dict, dict) -> None
+        local = self
         if local.data['playcount'] > remote.data['playcount']:
             api_changes['playcount'] = local.data['playcount']
         elif local.data['playcount'] < remote.data['playcount']:
@@ -773,9 +776,9 @@ class Media:
             return False
         api_changes = {}  # type: Dict[str, Any]
         nfo_changes = {}  # type: Dict[str, Any]
-        self._sync_dateadded(local, remote, nfo_changes, api_changes)
-        self._sync_lastplayed(local, remote, nfo_changes, api_changes)
-        self._sync_playcount(local, remote, nfo_changes, api_changes)
+        self._sync_dateadded(remote, nfo_changes, api_changes)
+        self._sync_lastplayed(remote, nfo_changes, api_changes)
+        self._sync_playcount(remote, nfo_changes, api_changes)
         cls = type(self)
         for list_type in cls.data_types()['list']['keys']:
             if sorted(local.data[list_type]) != sorted(remote.data[list_type]):
