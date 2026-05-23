@@ -1,0 +1,80 @@
+---
+name: test
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+jobs:
+  lint:
+    strategy:
+      matrix:
+        python_version:
+          - '3.8'
+        os:
+          - 'ubuntu-22.04'
+          - 'ubuntu-24.04'
+    runs-on: "${{ matrix.os }}"
+    steps:
+    - uses: actions/checkout@v6
+    - uses: actions/setup-python@v6
+      with:
+        python-version: "${{ matrix.python_version }}"
+    - name: Setup the linter
+      run: make test-requirements
+    - name: Run the linter
+      run: make test-lint
+  type:
+    strategy:
+      matrix:
+        python_version:
+          - '3.8'
+        os:
+          - 'ubuntu-22.04'
+          - 'ubuntu-24.04'
+    runs-on: "${{ matrix.os }}"
+    steps:
+    - uses: actions/checkout@v6
+    - uses: actions/setup-python@v6
+      with:
+        python-version: "${{ matrix.python_version }}"
+    - name: Setup the type-checker
+      run: make test-requirements
+    - name: Run the type-checker
+      run: make test-type
+  lint2:
+    strategy:
+      matrix:
+        python_version:
+          - '2.7'
+        os:
+          - 'ubuntu-latest'
+    runs-on: "${{ matrix.os }}"
+    container:
+        image: coatldev/six:latest
+        env:
+          UV_PYTHON: "${{ matrix.python_version }}"
+    steps:
+    - uses: actions/checkout@v6
+    - name: Setup the linter
+      run: make test-requirements
+    - name: Run the linter
+      run: make test-lint
+  type2:
+    strategy:
+      matrix:
+        python_version:
+          - '2.7'
+        os:
+          - 'ubuntu-latest'
+    runs-on: "${{ matrix.os }}"
+    container:
+        image: coatldev/six:latest
+        env:
+          UV_PYTHON: "${{ matrix.python_version }}"
+    steps:
+    - uses: actions/checkout@v6
+    - name: Setup the type-checker
+      run: make test-requirements
+    - name: Run the type-checker
+      run: make test-type
