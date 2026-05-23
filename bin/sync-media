@@ -1099,6 +1099,26 @@ class Film(Media):
     }  # type: Dict[str, Dict[str, Any]]
 
 
+def _main_clean(args):
+    # type: (Dict[str, Any]) -> None
+    cls_library = _get_library_class(args)
+    for path in args['paths']:
+        library = cls_library(path)
+        for item in library.items():
+            if item:
+                item.to_nfo(
+                    changes={},
+                    dry_run=args['noop'],
+                    force=True,
+                )
+                for child in item.children:
+                    child.to_nfo(
+                        changes={},
+                        dry_run=args['noop'],
+                        force=True,
+                    )
+
+
 def _main_sync(args):
     # type: (Dict[str, Any]) -> None
     cls_library = _get_library_class(args)
@@ -1178,7 +1198,10 @@ def main():  # type: () -> None
     )
     setattr(logging.Formatter, 'formatTime', format_datetime_rfc3339)
     logger.debug("Loaded config: %s", args)
-    _main_sync(args)
+    if args['subcommand'] == 'clean':
+        _main_clean(args)
+    else:
+        _main_sync(args)
 
 
 def parse_args():  # type: () -> Dict[str, Any]
@@ -1221,6 +1244,7 @@ def parse_args():  # type: () -> Dict[str, Any]
     )
     subparsers = parser.add_subparsers(dest='subcommand')
     parser_sync_media = subparsers.add_parser('sync-media')
+    parser_clean = subparsers.add_parser('clean')
     parser_sync_media.add_argument(
         '-a',
         '--host-address',
@@ -1267,7 +1291,7 @@ def parse_args():  # type: () -> Dict[str, Any]
         default=None,
         dest='remote_update',
     )
-    for subparser in (parser_sync_media, ):
+    for subparser in (parser_sync_media, parser_clean):
         subparser.add_argument(
             'paths',
             nargs='*',
