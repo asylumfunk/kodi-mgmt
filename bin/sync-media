@@ -355,7 +355,7 @@ class NfoLibrary:
         )
         return _possible_nfos
 
-    def get_nfos(self, top=None):  # type: (str) -> Iterable[str]
+    def get_nfos(self, top=None):  # type: (Optional[str]) -> Iterable[str]
         """
         Find all nfo metadata files within the library root
         """
@@ -459,7 +459,7 @@ class EpisodeNfoLibrary(NfoLibrary):
         """
         return Episode
 
-    def get_nfos(self, top=None):  # type: (str) -> Iterable[str]
+    def get_nfos(self, top=None):  # type: (Optional[str]) -> Iterable[str]
         """
         Find all nfo metadata files within the show root
         """
@@ -864,7 +864,7 @@ class Media:
         return status
 
     def to_nfo(self, local, changes, dry_run):
-        # type: (str, Media, dict, bool) -> bool
+        # type: (Media, dict, bool) -> bool
         """
         Send updates to the nfo file
         """
@@ -906,7 +906,7 @@ class Media:
             update_playcount_history(root_node)
         indent(root)
         if not dry_run:
-            with open(nfo, 'wb') as nfo_out:
+            with open(self.nfo, 'wb') as nfo_out:
                 nfo_out.write(b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
                 tree.write(nfo_out, xml_declaration=False, encoding='utf-8')
         return True
@@ -1118,7 +1118,7 @@ def _ensure_app_directories_exist():  # type: () -> None
 
 
 def format_datetime_rfc3339(self, record, datefmt=None):
-    # type: (logging.Formatter, logging.LogRecord, str) -> str
+    # type: (logging.Formatter, logging.LogRecord, Optional[str]) -> str
     """
     Format a datetime in RFC3339 format
 

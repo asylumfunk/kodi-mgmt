@@ -1,0 +1,7 @@
+# avoid: too-many-positional-arguments
+# https://github.com/pylint-dev/pylint/issues/9099
+pylint < 3.3
+
+# PY2 support was removed in mypy v0.980
+# https://mypy-lang.blogspot.com/2022/09/mypy-0981-released.html
+mypy[python2] < 0.980
