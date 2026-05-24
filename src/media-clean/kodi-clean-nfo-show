@@ -1,0 +1,99 @@
+#!/bin/sh
+set -aeu
+find_earliest_date() {
+    directory="${1}"
+    {
+        find \
+            "${directory}" \
+            -print0 \
+        | xargs -0 \
+            --no-run-if-empty \
+            stat --print="%w	%x	%y	%z\n" \
+        | awk -F'	' '{
+            if($1 != "-") print $1;
+            else if($3 != "-") print $3;
+            else if($2 != "-") print $2;
+            else if($4 != "-") print $4;
+            else print "";
+        }' \
+        ;
+        find \
+            "${directory}" \
+            -type f \
+            -name '*.nfo' \
+            -print0 \
+        | xargs -0 \
+            --no-run-if-empty \
+            grep '<dateadded>.*</dateadded>' \
+            --only-matching \
+            --no-filename \
+        | sed 's@\s*<[^>]*>@@g' \
+        ;
+    } \
+    | grep -v '^\s*$' \
+    | sed 's@\..*$@@' \
+    | sort \
+    | head -n1 \
+    ;
+}
+find_latest_lastplayed() {
+    directory="${1}"
+    {
+        find \
+            "${directory}" \
+            -type f \
+            -name '*.nfo' \
+            -print0 \
+        | xargs -0 \
+            --no-run-if-empty \
+            grep '<lastplayed>.*</lastplayed>' \
+            --only-matching \
+            --no-filename \
+        | sed 's@\s*<[^>]*>@@g' \
+        ;
+    } \
+    | grep -v '^\s*$' \
+    | sed 's@\..*$@@' \
+    | sort \
+    | tail -n1 \
+    ;
+}
+NFO_BASE=tvshow.nfo
+XSLT_BASE=tvshow.xslt
+for directory in "${@}"
+do
+    directory="$(realpath "${directory}")"
+    nfo="${directory}/${NFO_BASE}"
+    now="$(date '+%Y-%m-%d %H:%M:%S')"
+    nfo_pass1=/tmp/kodi.nfo
+    nfo_pass2=/tmp/kodi2.nfo
+    nfo_pass_break="${nfo_pass1}.bak"
+    style="${XSLT_BASE}"
+    if [ -e "${nfo}" ]
+    then
+        created="$(find_earliest_date "${directory}")"
+        lastplayed="$(find_latest_lastplayed "${directory}")"
+        echo "${nfo}: ${created}"
+        saxonb -o "${nfo_pass1}" "${nfo}" "${style}" "current-datetime=${now}" "created-datetime=${created}" "latest-lastplayed='${lastplayed:- }'"
+        echo >>"${nfo_pass1}"
+        vimdiff "${nfo_pass1}" "${nfo}"
+        filesize="$(cat "${nfo_pass1}" | wc -l)"
+        if [ -e "${nfo_pass_break}" ] || [ "${filesize:-0}" -lt 3 ]
+        then
+            break
+        fi
+        if ! diff "${nfo_pass1}" "${nfo}" >/dev/null
+        then
+            saxonb -o "${nfo_pass2}" "${nfo_pass1}" "${style}" "current-datetime=${now}" "created-datetime=${created}" "update-datetime=1" "latest-lastplayed='${lastplayed:- }'"
+            echo >>"${nfo_pass2}"
+            cp "${nfo_pass2}" "${nfo}"
+        fi
+    else
+        printf 'Unable to find nfo for %s: ' "${directory}"
+        find "${directory}" -mindepth 1 -maxdepth 1 -type f -print0 | sed --null-data 's@^.*\/@@' | xargs -0
+    fi
+done
+if [ -e /tmp/kodi.nfo.break ]
+then
+    rm /tmp/kodi.nfo.break
+fi
