@@ -715,8 +715,9 @@ class Media:
             return media
         return None
 
-    def _sync_dateadded(self, local, remote, nfo_changes, api_changes):
-        # type: (Media, Media, dict, dict) -> None
+    def _sync_dateadded(self, remote, nfo_changes, api_changes):
+        # type: (Media, dict, dict) -> None
+        local = self
         if local.data['dateadded'] and remote.data['dateadded']:
             # both sides have _some_ dateadded
             if (local.data['dateadded'] + timedelta(days=1)) < remote.data['dateadded']:
@@ -732,8 +733,9 @@ class Media:
             # only remote side has dateadded, so set it locally
             nfo_changes['dateadded'] = remote.data['dateadded']
 
-    def _sync_lastplayed(self, local, remote, nfo_changes, api_changes):
-        # type: (Media, Media, dict, dict) -> None
+    def _sync_lastplayed(self, remote, nfo_changes, api_changes):
+        # type: (Media, dict, dict) -> None
+        local = self
         if local.data['lastplayed'] and remote.data['lastplayed']:
             # both sides have _some_ lastplayed
             if (local.data['lastplayed'] - timedelta(days=1)) > remote.data['lastplayed']:
@@ -753,8 +755,9 @@ class Media:
             # only remote side has lastplayed, so set local
             nfo_changes['lastplayed'] = remote.data['lastplayed']
 
-    def _sync_playcount(self, local, remote, nfo_changes, api_changes):
-        # type: (Media, Media, dict, dict) -> None
+    def _sync_playcount(self, remote, nfo_changes, api_changes):
+        # type: (Media, dict, dict) -> None
+        local = self
         if local.data['playcount'] > remote.data['playcount']:
             api_changes['playcount'] = local.data['playcount']
         elif local.data['playcount'] < remote.data['playcount']:
@@ -773,9 +776,9 @@ class Media:
             return False
         api_changes = {}  # type: Dict[str, Any]
         nfo_changes = {}  # type: Dict[str, Any]
-        self._sync_dateadded(local, remote, nfo_changes, api_changes)
-        self._sync_lastplayed(local, remote, nfo_changes, api_changes)
-        self._sync_playcount(local, remote, nfo_changes, api_changes)
+        self._sync_dateadded(remote, nfo_changes, api_changes)
+        self._sync_lastplayed(remote, nfo_changes, api_changes)
+        self._sync_playcount(remote, nfo_changes, api_changes)
         cls = type(self)
         for list_type in cls.data_types()['list']['keys']:
             if sorted(local.data[list_type]) != sorted(remote.data[list_type]):
@@ -815,7 +818,7 @@ class Media:
         }
         result = False
         result = self.to_api(api, remote, api_changes, dry_run) or result
-        result = self.to_nfo(local, nfo_changes, dry_run) or result
+        result = self.to_nfo(nfo_changes, dry_run) or result
         if result:
             logger.info("Synced: %s", self.nfo)
             print(self.nfo)
@@ -863,30 +866,29 @@ class Media:
             status = bool(result)
         return status
 
-    def to_nfo(self, local, changes, dry_run):
-        # type: (Media, dict, bool) -> bool
+    def to_nfo(self, changes, dry_run, force=False):
+        # type: (dict, bool, Optional[bool]) -> bool
         """
         Send updates to the nfo file
         """
-        if not changes:
+        if not changes and not force:
             return False
         print('NFO TO:   ', changes)
         logger.info('NFO TO: %s', changes)
         print('NFO FROM: ', {
             key: value
-            for key, value in local.data.items()
+            for key, value in self.data.items()
             if key in changes
         }, file=sys.stderr)
         logger.debug('NFO FROM: %s', {
             key: value
-            for key, value in local.data.items()
+            for key, value in self.data.items()
             if key in changes
         })
         tree = ET.parse(self.nfo)
         root_node = self._get_root_node(tree)
         if root_node is None:
             return False
-        root = tree.getroot()
         if self.SHOULD_TOUCH_HISTORY_NODE:
             add_to_history(root_node)
         for key in changes.keys():
@@ -904,11 +906,25 @@ class Media:
                 lastplayed_node = lastplayed_nodes[0]
                 add_to_history(root_node, lastplayed_node.text)
             update_playcount_history(root_node)
-        indent(root)
+        result = self.save_nfo(tree, dry_run)
+        return result
+
+    def save_nfo(self, tree, dry_run):  # type: (ET.ElementTree, bool) -> bool
+        """
+        Save an NFO to disk
+        """
         if not dry_run:
+            root = tree.getroot()
+            indent(root)
             with open(self.nfo, 'wb') as nfo_out:
                 nfo_out.write(b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
-                tree.write(nfo_out, xml_declaration=False, encoding='utf-8')
+                kwargs = {'short_empty_elements': False} if sys.version_info[0] == 3 else {}
+                tree.write(
+                    nfo_out,
+                    xml_declaration=False,
+                    encoding='utf-8',
+                    **kwargs  # type: ignore
+                )
         return True
 
     @property
@@ -1083,8 +1099,29 @@ class Film(Media):
     }  # type: Dict[str, Dict[str, Any]]
 
 
-def _main_sync(args, cls_library):
-    # type: (Dict[str, Any], Type[NfoLibrary]) -> None
+def _main_clean(args):
+    # type: (Dict[str, Any]) -> None
+    cls_library = _get_library_class(args)
+    for path in args['paths']:
+        library = cls_library(path)
+        for item in library.items():
+            if item:
+                item.to_nfo(
+                    changes={},
+                    dry_run=args['noop'],
+                    force=True,
+                )
+                for child in item.children:
+                    child.to_nfo(
+                        changes={},
+                        dry_run=args['noop'],
+                        force=True,
+                    )
+
+
+def _main_sync(args):
+    # type: (Dict[str, Any]) -> None
+    cls_library = _get_library_class(args)
     api = KodiApi(
         args['host_address'],
         args['host_port'],
@@ -1133,6 +1170,17 @@ def format_datetime_rfc3339(self, record, datefmt=None):
     )
 
 
+def _get_library_class(args):  # type: (Dict[str, Any]) -> Type[NfoLibrary]
+    cls = None  # type: Optional[Type[NfoLibrary]]
+    if args['type'] == 'film':
+        cls = MovieNfoLibrary
+    elif args['type'] == 'show':
+        cls = ShowNfoLibrary
+    else:
+        raise NotImplementedError(args['type'])
+    return cls
+
+
 def main():  # type: () -> None
     """
     Execute the script from the command line
@@ -1150,14 +1198,10 @@ def main():  # type: () -> None
     )
     setattr(logging.Formatter, 'formatTime', format_datetime_rfc3339)
     logger.debug("Loaded config: %s", args)
-    cls_library = None  # type: Optional[Type[NfoLibrary]]
-    if args['type'] == 'film':
-        cls_library = MovieNfoLibrary
-    elif args['type'] == 'show':
-        cls_library = ShowNfoLibrary
+    if args['subcommand'] == 'clean':
+        _main_clean(args)
     else:
-        raise NotImplementedError(args['type'])
-    _main_sync(args, cls_library)
+        _main_sync(args)
 
 
 def parse_args():  # type: () -> Dict[str, Any]
@@ -1178,26 +1222,6 @@ def parse_args():  # type: () -> Dict[str, Any]
         help='Path to JSON config file',
     )
     parser.add_argument(
-        '-a',
-        '--host-address',
-    )
-    parser.add_argument(
-        '-p',
-        '--host-port',
-    )
-    parser.add_argument(
-        '-P',
-        '--host-path',
-    )
-    parser.add_argument(
-        '-u',
-        '--username',
-    )
-    parser.add_argument(
-        '-w',
-        '--password',
-    )
-    parser.add_argument(
         '-n',
         '--noop',
         action='store_true',
@@ -1211,32 +1235,6 @@ def parse_args():  # type: () -> Dict[str, Any]
         dest='noop',
     )
     parser.add_argument(
-        '-l',
-        '--local-update',
-        action='store_true',
-        default=None,
-    )
-    parser.add_argument(
-        '-L',
-        '--no-local-update',
-        action='store_false',
-        default=None,
-        dest='local_update',
-    )
-    parser.add_argument(
-        '-r',
-        '--remote-update',
-        action='store_true',
-        default=None,
-    )
-    parser.add_argument(
-        '-R',
-        '--no-remote-update',
-        action='store_false',
-        default=None,
-        dest='remote_update',
-    )
-    parser.add_argument(
         '-t',
         '--type',
         choices=(
@@ -1244,10 +1242,61 @@ def parse_args():  # type: () -> Dict[str, Any]
             'show',
         ),
     )
-    parser.add_argument(
-        'paths',
-        nargs='*',
+    subparsers = parser.add_subparsers(dest='subcommand')
+    parser_sync = subparsers.add_parser('sync')
+    parser_clean = subparsers.add_parser('clean')
+    parser_sync.add_argument(
+        '-a',
+        '--host-address',
     )
+    parser_sync.add_argument(
+        '-p',
+        '--host-port',
+    )
+    parser_sync.add_argument(
+        '-P',
+        '--host-path',
+    )
+    parser_sync.add_argument(
+        '-u',
+        '--username',
+    )
+    parser_sync.add_argument(
+        '-w',
+        '--password',
+    )
+    parser_sync.add_argument(
+        '-l',
+        '--local-update',
+        action='store_true',
+        default=None,
+    )
+    parser_sync.add_argument(
+        '-L',
+        '--no-local-update',
+        action='store_false',
+        default=None,
+        dest='local_update',
+    )
+    parser_sync.add_argument(
+        '-r',
+        '--remote-update',
+        action='store_true',
+        default=None,
+    )
+    parser_sync.add_argument(
+        '-R',
+        '--no-remote-update',
+        action='store_false',
+        default=None,
+        dest='remote_update',
+    )
+    for subparser in (parser_sync, parser_clean):
+        subparser.add_argument(
+            'paths',
+            nargs='*',
+            default=None,
+        )
     args = parser.parse_args()
     cli_settings = vars(args)
     env_settings = {
@@ -1265,6 +1314,7 @@ def parse_args():  # type: () -> Dict[str, Any]
         'remote_update': True,
         'type': 'film',
         'paths': ('.',),
+        'subcommand': 'sync-media',
     }
     config_path = str(
         cli_settings['config']
