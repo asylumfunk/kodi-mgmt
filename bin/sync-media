@@ -1243,55 +1243,55 @@ def parse_args():  # type: () -> Dict[str, Any]
         ),
     )
     subparsers = parser.add_subparsers(dest='subcommand')
-    parser_sync_media = subparsers.add_parser('sync-media')
+    parser_sync = subparsers.add_parser('sync')
     parser_clean = subparsers.add_parser('clean')
-    parser_sync_media.add_argument(
+    parser_sync.add_argument(
         '-a',
         '--host-address',
     )
-    parser_sync_media.add_argument(
+    parser_sync.add_argument(
         '-p',
         '--host-port',
     )
-    parser_sync_media.add_argument(
+    parser_sync.add_argument(
         '-P',
         '--host-path',
     )
-    parser_sync_media.add_argument(
+    parser_sync.add_argument(
         '-u',
         '--username',
     )
-    parser_sync_media.add_argument(
+    parser_sync.add_argument(
         '-w',
         '--password',
     )
-    parser_sync_media.add_argument(
+    parser_sync.add_argument(
         '-l',
         '--local-update',
         action='store_true',
         default=None,
     )
-    parser_sync_media.add_argument(
+    parser_sync.add_argument(
         '-L',
         '--no-local-update',
         action='store_false',
         default=None,
         dest='local_update',
     )
-    parser_sync_media.add_argument(
+    parser_sync.add_argument(
         '-r',
         '--remote-update',
         action='store_true',
         default=None,
     )
-    parser_sync_media.add_argument(
+    parser_sync.add_argument(
         '-R',
         '--no-remote-update',
         action='store_false',
         default=None,
         dest='remote_update',
     )
-    for subparser in (parser_sync_media, parser_clean):
+    for subparser in (parser_sync, parser_clean):
         subparser.add_argument(
             'paths',
             nargs='*',
