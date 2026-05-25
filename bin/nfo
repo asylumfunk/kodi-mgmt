@@ -410,7 +410,10 @@ class Media:
         return string
 
     @classmethod
-    def _from_nfo_types(cls, data, root_node):  # type: (dict, ET.Element) -> None
+    def from_nfo_types(cls, data, root_node):  # type: (dict, ET.Element) -> None
+        """
+        Parse datatypes from a node into a dictionary, generic
+        """
         for key, _type in cls.data_types().items():
             if key == 'list':
                 continue
@@ -423,7 +426,10 @@ class Media:
                 data[attribute] = item
 
     @classmethod
-    def _from_nfo_list(cls, data, root_node):  # type: (dict, ET.Element) -> None
+    def from_nfo_list(cls, data, root_node):  # type: (dict, ET.Element) -> None
+        """
+        Parse datatypes from a node into a dictionary, list items
+        """
         for list_type in cls.data_types()['list']['keys']:
             nodes = root_node.findall('./' + list_type)
             items = [
@@ -450,19 +456,22 @@ class Media:
                 return None
             logger.exception("NEW ERROR FOUND: %s: %s", error.msg, nfo)
             return None
-        root_node = cls._get_root_node(tree)
+        root_node = cls.get_root_node(tree)
         if root_node is None:
             logger.error("NFO missing root node, %s: %s", cls.ROOT_NODE_TAG_NAME, tree)
             return None
         data = {}  # type: Dict[str, Any]
-        cls._from_nfo_types(data, root_node)
-        cls._from_nfo_list(data, root_node)
+        cls.from_nfo_types(data, root_node)
+        cls.from_nfo_list(data, root_node)
         film = cls(data, nfo=nfo)
         logger.debug('film: %s', film)
         return film
 
     @classmethod
-    def _get_root_node(cls, tree):  # type: (ET.ElementTree) -> Optional[ET.Element]
+    def get_root_node(cls, tree):  # type: (ET.ElementTree) -> Optional[ET.Element]
+        """
+        Grab the proper root node from an element tree
+        """
         root_nodes = tree.findall('.')
         root_node = None
         if len(root_nodes) == 1:
@@ -713,7 +722,7 @@ class Media:
             if key in changes
         })
         tree = ET.parse(self.nfo)
-        root_node = self._get_root_node(tree)
+        root_node = self.get_root_node(tree)
         if root_node is None:
             return False
         if self.SHOULD_TOUCH_HISTORY_NODE:
