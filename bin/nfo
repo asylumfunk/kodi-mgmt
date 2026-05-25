@@ -932,6 +932,7 @@ class NfoLibrary:
     # pylint: disable=too-few-public-methods
     __metaclass__ = ABCMeta
     NFO_NAME_BASE = None  # type: str
+    CLS_ITEM = Media
 
     def __init__(self, root):  # type: (str) -> None
         root = os.path.abspath(root)
@@ -989,13 +990,6 @@ class NfoLibrary:
                 yield nfo
         return
 
-    @property
-    def item_class(self):  # type: () -> Type[Media]
-        """
-        The object class used to instantiate items in this library
-        """
-        return Media
-
     def items(self):  # type: () -> Iterable[Media]
         """
         Access all of the linked media objects in the library
@@ -1005,7 +999,7 @@ class NfoLibrary:
         logger.debug("cls='%s' root='%s'", cls_name, root_name)
         count = 0
         for nfo in self.get_nfos():
-            item = self.item_class.from_nfo(nfo)
+            item = self.CLS_ITEM.from_nfo(nfo)
             if item:
                 count += 1
                 yield item
@@ -1026,13 +1020,7 @@ class MovieNfoLibrary(NfoLibrary):
     """
     # pylint: disable=too-few-public-methods
     NFO_NAME_BASE = 'movie'
-
-    @property
-    def item_class(self):  # type: () -> Type[Film]
-        """
-        The object class used to instantiate items in this library
-        """
-        return Film
+    CLS_ITEM = Film
 
 
 class ShowNfoLibrary(NfoLibrary):
@@ -1041,13 +1029,7 @@ class ShowNfoLibrary(NfoLibrary):
     """
     # pylint: disable=too-few-public-methods
     NFO_NAME_BASE = 'tvshow'
-
-    @property
-    def item_class(self):  # type: () -> Type[Show]
-        """
-        The object class used to instantiate items in this library
-        """
-        return Show
+    CLS_ITEM = Show
 
 
 class EpisodeNfoLibrary(NfoLibrary):
@@ -1057,13 +1039,7 @@ class EpisodeNfoLibrary(NfoLibrary):
     # pylint: disable=too-few-public-methods
     NFO_NAME_BASE = 'episodedetails'
     SKIP_HIDDEN_DIRECTORIES = True
-
-    @property
-    def item_class(self):  # type: () -> Type[Episode]
-        """
-        The object class used to instantiate items in this library
-        """
-        return Episode
+    CLS_ITEM = Episode
 
     def get_nfos(self, top=None):  # type: (Optional[str]) -> Iterable[str]
         """
