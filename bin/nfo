@@ -457,13 +457,21 @@ class Media:
             logger.exception("NEW ERROR FOUND: %s: %s", error.msg, nfo)
             return None
         root_node = cls.get_root_node(tree)
+        _cls = cls
+        if root_node is None:
+            if cls.CHILD_LIBRARY is not None:
+                # If we can't parse the file as the desired type,
+                # try parsing it again as the child type;
+                # i.e., Show -> Episode
+                _cls = cls.CHILD_LIBRARY.CLS_ITEM
+                root_node = _cls.get_root_node(tree)
         if root_node is None:
             logger.error("NFO missing root node, %s: %s", cls.ROOT_NODE_TAG_NAME, tree)
             return None
         data = {}  # type: Dict[str, Any]
-        cls.from_nfo_types(data, root_node)
-        cls.from_nfo_list(data, root_node)
-        film = cls(data, nfo=nfo)
+        _cls.from_nfo_types(data, root_node)
+        _cls.from_nfo_list(data, root_node)
+        film = _cls(data, nfo=nfo)
         logger.debug('film: %s', film)
         return film
 
@@ -1089,9 +1097,17 @@ Show.CHILD_LIBRARY = EpisodeNfoLibrary
 def _main_clean(args):
     # type: (Dict[str, Any]) -> None
     cls_library = _get_library_class(args)
+    item_class = cls_library.CLS_ITEM
     for path in args['paths']:
-        library = cls_library(path)
-        for item in library.items():
+        if os.path.isdir(path):
+            library = cls_library(path)
+            items = library.items()
+        elif os.path.isfile(path):
+            item = item_class.from_nfo(path)
+            items = (item,)  # type: ignore
+        else:
+            items = []
+        for item in items:
             if item:
                 item.to_nfo(
                     changes={},
@@ -1109,6 +1125,7 @@ def _main_clean(args):
 def _main_sync(args):
     # type: (Dict[str, Any]) -> None
     cls_library = _get_library_class(args)
+    item_class = cls_library.CLS_ITEM
     api = KodiApi(
         args['host_address'],
         args['host_port'],
@@ -1118,8 +1135,15 @@ def _main_sync(args):
     )
     logger.debug("api: %s", api)
     for path in args['paths']:
-        library = cls_library(path)
-        for item in library.items():
+        if os.path.isdir(path):
+            library = cls_library(path)
+            items = library.items()
+        elif os.path.isfile(path):
+            item = item_class.from_nfo(path)
+            items = (item,)  # type: ignore
+        else:
+            items = []
+        for item in items:
             if item:
                 item.sync(
                     api,
