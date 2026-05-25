@@ -1,0 +1,62 @@
+#!/bin/sh
+set -aeu
+find_movie() {
+    directory="${1}"
+    # shellcheck disable=SC2043
+    for basename in movie "$(basename "${directory}")"
+    do
+        for extension in mkv mp4 avi mpg wmv mov iso m3u
+        do
+            for part_type in '' -part -disc -disk -cd .part .disc .disk .cd _part _disc _disk _cd part disc disk cd
+            do
+                extra=''
+                if [ -n "${part_type}" ]
+                then
+                    extra="${part_type}1"
+                fi
+                movie="${directory}/${basename}${extra}.${extension}"
+                if [ -e "${movie}" ]
+                then
+                    echo "${movie}"
+                    return
+                fi
+            done
+        done
+    done
+    return 1
+}
+for directory in "${@}"
+do
+    nfo="${directory}/movie.nfo"
+    now="$(date '+%Y-%m-%d %H:%M:%S')"
+    nfo_pass1=/tmp/kodi.nfo
+    nfo_pass2=/tmp/kodi2.nfo
+    nfo_pass_break="${nfo_pass1}.bak"
+    style=movie.xslt
+    if [ -e "${nfo}" ] && movie="$(find_movie "${directory}")"
+    then
+        lastModified="$(stat "${movie}" | grep 'Modify:' | sed 's/Modify: //; s/\..*$//;')"
+        echo "${nfo}"
+        saxonb -o "${nfo_pass1}" "${nfo}" "${style}" "current-datetime=${now}" "created-datetime=${lastModified}"
+        echo >>"${nfo_pass1}"
+        # vimdiff "${nfo_pass1}" "${nfo}"
+        filesize="$(cat "${nfo_pass1}" | wc -l)"
+        if [ -e "${nfo_pass_break}" ] || [ "${filesize:-0}" -lt 3 ]
+        then
+            break
+        fi
+        if ! diff "${nfo_pass1}" "${nfo}" >/dev/null
+        then
+            saxonb -o "${nfo_pass2}" "${nfo_pass1}" "${style}" "current-datetime=${now}" "created-datetime=${lastModified}" "update-datetime=1"
+            echo >>"${nfo_pass2}"
+            cp "${nfo_pass2}" "${nfo}"
+        fi
+    else
+        printf 'Unable to find movie for %s: ' "${directory}"
+        find "${directory}" -mindepth 1 -maxdepth 1 -type f -print0 | sed --null-data 's@^.*\/@@' | xargs -0
+    fi
+done
+if [ -e /tmp/kodi.nfo.break ]
+then
+    rm /tmp/kodi.nfo.break
+fi
