@@ -73,7 +73,7 @@ except ImportError:
     from urllib2 import urlopen  # type: ignore
     from urllib2 import Request  # type: ignore
 try:
-    from typing import Any, Dict, Iterable, List, Optional, Type
+    from typing import Any, Dict, Iterable, List, Optional, Text, Type
 except ImportError:
     pass
 
@@ -1215,12 +1215,38 @@ def main():  # type: () -> None
         _main_sync(args)
 
 
+def readlines(input_file=None, separator=b'\0', block_size=2**3, encoding='utf-8'):
+    # type: (Any, bytes, int, Text) -> Iterable[Text]
+    """
+    Read lines with an arbitrary separator
+
+    Used to split lines by NULL characters, e.g.,
+        `find . -print0`
+
+    TODO: Fix typedef for input_file
+    """
+    input_file = input_file or sys.stdin.buffer  # type: ignore
+    partial_line = b''
+    while True:
+        text = input_file.read(block_size)
+        if not text:
+            break
+        partial_line += text
+        lines = partial_line.split(separator)
+        partial_line = lines.pop()
+        for line in lines:
+            yield line.decode(encoding)
+    if partial_line:
+        yield partial_line.decode(encoding)
+
+
 def parse_args():  # type: () -> Dict[str, Any]
     """
     Parse and process configuration arguments
 
     CLI > ENV > JSON > DEFAULTS
     """
+    # pylint: disable=too-many-locals
     script_name = os.path.split(sys.argv[0])[-1]
     description = __doc__
     parser = argparse.ArgumentParser(
@@ -1244,6 +1270,20 @@ def parse_args():  # type: () -> Dict[str, Any]
         action='store_false',
         default=None,
         dest='noop',
+    )
+    parser.add_argument(
+        '-z',
+        '--null-separator',
+        action='store_const',
+        const='\0',
+        dest='separator',
+    )
+    parser.add_argument(
+        '-Z',
+        '--newline-separator',
+        action='store_const',
+        const='\n',
+        dest='separator',
     )
     parser.add_argument(
         '-t',
@@ -1320,6 +1360,7 @@ def parse_args():  # type: () -> Dict[str, Any]
         'host_address': 'http://127.0.0.1',
         'host_port': 80,
         'host_path': 'jsonrpc',
+        'separator': '\0',
         'noop': True,
         'local_update': True,
         'remote_update': True,
@@ -1346,6 +1387,14 @@ def parse_args():  # type: () -> Dict[str, Any]
         )
         for key, value in cli_settings.items()
     }
+    if join_settings['separator'] == '\\0':
+        join_settings['separator'] = '\0'
+    if sys.version_info[0] == 3:
+        join_settings['separator'] = bytes(join_settings['separator'], encoding='utf-8')
+    else:
+        join_settings['separator'] = bytes(join_settings['separator'])
+    if not sys.stdin.isatty():
+        join_settings['paths'] = readlines(separator=join_settings['separator'])
     return join_settings
 
 
