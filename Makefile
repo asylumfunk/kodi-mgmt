@@ -27,3 +27,10 @@ test-type:
 .PHONY: test-lint
 test-lint:
 	$(PYLINT) $(PY_FILES)
+
+.PHONY: version
+version:
+	@$(BIN_DIR)/git-log-version \
+		'$(PWD)' \
+		'$(BIN_DIR)' \
+	;
