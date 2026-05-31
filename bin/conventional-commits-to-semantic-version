@@ -1,0 +1,34 @@
+#!/usr/bin/awk -f
+# Input is expected in the form of:
+#     git log --oneline --reverse
+BEGIN {
+    if (VERSION !~ /[0-9]+\.[0-9]+\.[0-9]+/) {
+        VERSION = "0.0.0"
+    }
+    split(VERSION, version, /\./)
+    MAJOR=version[1]
+    MINOR=version[2]
+    PATCH=version[3]
+}
+$2 ~ /^(chore|temp)(\([^)]+\))?:/ {
+    next
+}
+$2 ~ /^feat(\([^)]+\))?:/ {
+    MINOR++
+    PATCH=0
+    next
+}
+$2 ~ /^[a-z]+(\([^)]+\))?!:/ {
+    MAJOR++
+    MINOR=0
+    PATCH=0
+    next
+}
+# $2 ~ /^.+(\([^)]+\))?:/ {
+{
+    PATCH++
+}
+# $2 ~ /^[Mm]erge/ {
+END {
+    printf "%s.%s.%s\n",MAJOR,MINOR,PATCH
+}
